@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>B站弹幕播放器 - 全屏修复版</title>
+  <style>
+    body { background: #111; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    .controls { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+    input, button { padding: 10px; border: none; border-radius: 8px; }
+    button { background: #ff6699; color: white; cursor: pointer; font-weight: bold; }
+
+    /* 播放器容器 */
+    .player-container {
+      position: relative;
+      max-width: 960px;
+      margin: auto;
+      overflow: hidden;
+      background: black;
+    }
+
+    /* 关键：全屏状态下容器的样式 */
+    .player-container:fullscreen {
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      display: flex;
+      align-items: center; /* 视频垂直居中 */
+    }
+
+    video {
+      width: 100%;
+      display: block;
+    }
+
+    #danmaku-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 999; /* 确保在视频上方 */
+    }
+
+    .danmu {
+      position: absolute;
+      left: 100%; 
+      white-space: nowrap;
+      font-weight: bold;
+      text-shadow: 1px 1px 2px black, 0 0 2px black; 
+      animation: moveLeft linear forwards;
+      will-change: transform; /* 优化全屏下的性能 */
+    }
+
+    @keyframes moveLeft {
+      from { transform: translateX(0); }
+      to { transform: translateX(-200vw); } /* 增加距离确保全屏也能滑出 */
+    }
+  </style>
+</head>
+
+<body>
+  <h1>B站弹幕本地播放器</h1>
+
+  <div class="controls">
+    <input type="file" id="videoFile" accept="video/*">
+    <input type="text" id="bvidInput" placeholder="输入BV号">
+    <button id="loadDanmu">加载弹幕</button>
+    <button id="fullScreenBtn">全屏播放</button>
+  </div>
+
+  <div class="player-container" id="player">
+    <video id="video" controls></video>
+    <div id="danmaku-layer"></div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const player = document.getElementById('player');
+    const videoFile = document.getElementById('videoFile');
+    const loadDanmuBtn = document.getElementById('loadDanmu');
+    const fullScreenBtn = document.getElementById('fullScreenBtn');
+    const bvidInput = document.getElementById('bvidInput');
+    const danmakuLayer = document.getElementById('danmaku-layer');
+
+    let danmus = [];
+    let danmuIndex = 0;
+
+    // 1. 全屏功能修复：请求容器全屏而非 video 全屏
+    fullScreenBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        player.requestFullscreen().catch(err => {
+          alert(`全屏失败: ${err.message}`);
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    });
+
+    videoFile.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) {
+        video.src = URL.createObjectURL(file);
+        danmuIndex = 0;
+        danmakuLayer.innerHTML = '';
+      }
+    });
+
+    async function loadDanmu(bvid) {
+      try {
+        const res = await fetch(`/api/danmu?id=${bvid}`);
+        const data = await res.json();
+        return data.danmus;
+      } catch (error) {
+        console.warn('使用模拟数据...');
+        return Array.from({ length: 50 }, (_, i) => ({
+          text: `全屏测试弹幕 ${i + 1}`,
+          time: i * 1,
+          color: i % 2 === 0 ? '#ffffff' : '#ff6699'
+        }));
+      }
+    }
+
+    function sendDanmu(danmu) {
+      const el = document.createElement('div');
+      el.className = 'danmu';
+      el.textContent = danmu.text;
+      el.style.color = danmu.color || '#ffffff';
+      
+      const fontSize = 24;
+      el.style.fontSize = fontSize + 'px';
+      
+      // 依然保持在 1/4 处
+      const maxTop = (danmakuLayer.clientHeight * 0.25) - fontSize; 
+      el.style.top = Math.max(0, Math.random() * maxTop) + 'px';
+      
+      el.style.animationDuration = '30s';
+      danmakuLayer.appendChild(el);
+      el.addEventListener('animationend', () => el.remove());
+    }
+
+    video.addEventListener('timeupdate', () => {
+      const currentTime = video.currentTime;
+      while (danmuIndex < danmus.length && danmus[danmuIndex].time <= currentTime) {
+        if (currentTime - danmus[danmuIndex].time < 1.5) {
+          sendDanmu(danmus[danmuIndex]);
+        }
+        danmuIndex++;
+      }
+    });
+
+    video.addEventListener('seeked', () => {
+      danmuIndex = danmus.findIndex(d => d.time >= video.currentTime);
+      if (danmuIndex === -1) danmuIndex = danmus.length;
+      danmakuLayer.innerHTML = ''; 
+    });
+
+    loadDanmuBtn.addEventListener('click', async () => {
+      const bvid = bvidInput.value.trim();
+      if (!bvid) return alert('请输入BV号');
+      const raw = await loadDanmu(bvid);
+      danmus = raw.sort((a, b) => a.time - b.time);
+      danmuIndex = 0;
+      alert(`已加载 ${danmus.length} 条弹幕`);
+    });
+  </script>
+</body>
+</html>
