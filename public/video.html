@@ -73,7 +73,7 @@
 
     .controls {
       display: grid;
-      grid-template-columns: minmax(145px, 0.9fr) minmax(120px, 0.65fr) 88px 98px 98px 82px 112px minmax(360px, 1.6fr);
+      grid-template-columns: minmax(145px, 0.95fr) 110px minmax(120px, 0.65fr) 88px 98px 98px 82px 112px minmax(360px, 1.5fr);
       gap: 6px;
       padding: 8px;
       border-radius: 14px;
@@ -117,6 +117,114 @@
     }
     button:active { transform: translateY(0); }
     #fullScreenBtn { background: linear-gradient(135deg, #293549 0%, #1b2433 100%); box-shadow: none; }
+    #prevVideoBtn, #nextVideoBtn, #pickFolderBtn { background: linear-gradient(135deg, #293549 0%, #1b2433 100%); box-shadow: none; }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+      transform: none;
+      box-shadow: none;
+      filter: none;
+    }
+
+    .viewer-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .playlist-panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      padding: 12px;
+      min-height: 180px;
+    }
+
+    .playlist-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .playlist-title {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .playlist-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .playlist-list {
+      display: grid;
+      gap: 6px;
+      max-height: 560px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .playlist-item {
+      width: 100%;
+      text-align: left;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid transparent;
+      color: var(--text);
+      cursor: pointer;
+      box-shadow: none;
+      display: grid;
+      gap: 4px;
+    }
+
+    .playlist-item:hover {
+      transform: none;
+      box-shadow: none;
+      filter: none;
+      border-color: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .playlist-item.active {
+      border-color: rgba(255, 107, 138, 0.42);
+      background: rgba(255, 107, 138, 0.14);
+    }
+
+    .playlist-item-name {
+      font-size: 12px;
+      font-weight: 700;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+
+    .playlist-item-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .playlist-empty {
+      padding: 18px 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    .control-hint {
+      margin-top: -2px;
+      padding: 0 6px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
 
     .settings-row {
       display: grid;
@@ -165,12 +273,14 @@
     @media (max-width: 980px) {
       .controls { grid-template-columns: 1fr 1fr; }
       .settings-row { grid-column: 1 / -1; }
+      .viewer-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 720px) {
       body { padding: 16px 12px 22px; }
       .controls { grid-template-columns: 1fr; padding: 12px; }
       .settings-row { grid-template-columns: 1fr; }
       .player-container { border-radius: 18px; }
+      .playlist-list { max-height: 260px; }
     }
   </style>
 </head>
@@ -179,7 +289,9 @@
   <main class="page">
     <section class="workspace">
       <div class="controls">
-        <input type="file" id="videoFile" accept="video/*">
+        <input type="file" id="videoFile" accept="video/*" multiple>
+        <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
+        <button id="pickFolderBtn">选择文件夹</button>
         <input type="text" id="bvidInput" placeholder="输入BV号或ep号">
         <select id="strategySelect" title="弹幕获取策略">
           <option value="xml">XML</option>
@@ -207,6 +319,7 @@
           </div>
         </div>
       </div>
+      <div class="control-hint">左侧文件框用于选择单个或多个视频；“选择文件夹”才会一次导入整个目录。自动弹幕会优先识别文件名里的 `ep473307` 或 `BV...`，不会再把 `EP02` 当成弹幕 ID。</div>
 
       <div class="status-bar" id="statusBar">
         <div class="status-item">策略 <strong id="statusStrategy">seg.so</strong></div>
@@ -216,12 +329,30 @@
         <div class="status-item">偏移 <strong id="statusOffset">0秒</strong></div>
         <div class="status-item">视频时间 <strong id="statusVideoTime">00:00</strong></div>
         <div class="status-item">弹幕判定 <strong id="statusTriggerTime">00:00</strong></div>
+        <div class="status-item">列表 <strong id="statusPlaylist">0 / 0</strong></div>
         <div class="status-item">文件 <strong id="statusFile">未选择</strong></div>
       </div>
 
-      <div class="player-container" id="player">
-        <video id="video" controls controlslist="nofullscreen noremoteplayback"></video>
-        <div id="danmaku-layer"></div>
+      <div class="viewer-grid">
+        <div>
+          <div class="player-container" id="player">
+            <video id="video" controls controlslist="nofullscreen noremoteplayback"></video>
+            <div id="danmaku-layer"></div>
+          </div>
+        </div>
+        <aside class="playlist-panel">
+          <div class="playlist-header">
+            <div>
+              <div class="playlist-title">播放列表</div>
+              <div class="playlist-meta" id="playlistMeta">未加载文件</div>
+            </div>
+            <div>
+              <button id="prevVideoBtn" type="button">上一集</button>
+              <button id="nextVideoBtn" type="button">下一集</button>
+            </div>
+          </div>
+          <div class="playlist-list" id="playlist"></div>
+        </aside>
       </div>
     </section>
   </main>
@@ -230,10 +361,16 @@
     const video = document.getElementById('video');
     const player = document.getElementById('player');
     const videoFile = document.getElementById('videoFile');
+    const folderPicker = document.getElementById('folderPicker');
+    const pickFolderBtn = document.getElementById('pickFolderBtn');
     const loadDanmuBtn = document.getElementById('loadDanmu');
     const refreshDanmuBtn = document.getElementById('refreshDanmuBtn');
     const toggleStatusBtn = document.getElementById('toggleStatusBtn');
     const fullScreenBtn = document.getElementById('fullScreenBtn');
+    const prevVideoBtn = document.getElementById('prevVideoBtn');
+    const nextVideoBtn = document.getElementById('nextVideoBtn');
+    const playlist = document.getElementById('playlist');
+    const playlistMeta = document.getElementById('playlistMeta');
     const bvidInput = document.getElementById('bvidInput');
     const strategySelect = document.getElementById('strategySelect');
     const danmakuLayer = document.getElementById('danmaku-layer');
@@ -250,6 +387,7 @@
     const statusOffset = document.getElementById('statusOffset');
     const statusVideoTime = document.getElementById('statusVideoTime');
     const statusTriggerTime = document.getElementById('statusTriggerTime');
+    const statusPlaylist = document.getElementById('statusPlaylist');
     const statusFile = document.getElementById('statusFile');
     const statusBar = document.getElementById('statusBar');
     const playbackMemoryKey = 'b-video-playback-memory';
@@ -264,6 +402,9 @@
     let currentVideoMemoryId = '';
     let pendingResumeTime = null;
     let currentVideoName = '未选择';
+    let currentPlaylist = [];
+    let currentPlaylistIndex = -1;
+    let currentObjectUrl = '';
     
     // 性能优化全局变量缓存
     let layerW = 0; 
@@ -277,6 +418,7 @@
     const laneGap = 24;
     let danmuLoopId = 0;
     const maxDanmuPerFrame = 6;
+    const videoFilePattern = /\.(mp4|mkv|avi|mov|m4v|webm)$/i;
 
     // 优化点3：时间插值算法，弥补 video.currentTime 刷新过慢的毛病
     let lastVideoTime = 0;
@@ -365,7 +507,54 @@
     }
 
     function buildVideoMemoryId(file) {
-      return [file.name, file.size, file.lastModified].join('__');
+      const relativeName = file.webkitRelativePath || file.name;
+      return [relativeName, file.size, file.lastModified].join('__');
+    }
+
+    function isVideoFile(file) {
+      return Boolean(file && videoFilePattern.test(file.name || ''));
+    }
+
+    function getPlaylistLabel(item) {
+      return item.relativePath || item.file.name;
+    }
+
+    function formatFileSize(size) {
+      if (!Number.isFinite(size) || size <= 0) return '--';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let value = size;
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex++;
+      }
+      return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+    }
+
+    function naturalSortFiles(files) {
+      return [...files].sort((a, b) => {
+        const pathA = a.webkitRelativePath || a.name;
+        const pathB = b.webkitRelativePath || b.name;
+        return pathA.localeCompare(pathB, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    function detectVideoIdFromName(name) {
+      if (!name) return '';
+      const baseName = name.replace(/\.[^.]+$/, '');
+
+      const bvidMatch = baseName.match(/BV[0-9A-Za-z]+/i);
+      if (bvidMatch) {
+        return bvidMatch[0];
+      }
+
+      // 优先识别真实的 B 站 ep id，避免把文件序号 EP02 误判成 ep2
+      const explicitEpMatch = baseName.match(/(?:^|[_\s-])(ep\d{4,})(?=$|[_\s-])/i);
+      if (explicitEpMatch) {
+        return explicitEpMatch[1];
+      }
+
+      return '';
     }
 
     function getSavedPlaybackTime(memoryId) {
@@ -398,11 +587,75 @@
       statusCache.textContent = fromCache == null ? '未加载' : (fromCache ? '命中' : '重拉');
       statusRefresh.textContent = forceRefresh ? '是' : '否';
       statusOffset.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
+      statusPlaylist.textContent = currentPlaylist.length
+        ? `${currentPlaylistIndex + 1} / ${currentPlaylist.length}`
+        : '0 / 0';
       updatePlaybackStatus();
       if (fileName) {
         currentVideoName = fileName;
       }
       statusFile.textContent = currentVideoName;
+    }
+
+    function updatePlaylistControls() {
+      prevVideoBtn.disabled = currentPlaylistIndex <= 0;
+      nextVideoBtn.disabled = currentPlaylistIndex < 0 || currentPlaylistIndex >= currentPlaylist.length - 1;
+    }
+
+    function getVideoErrorMessage() {
+      const mediaError = video.error;
+      if (!mediaError) {
+        return '当前文件无法播放，可能是浏览器不支持该视频格式或编码。';
+      }
+
+      if (mediaError.code === MediaError.MEDIA_ERR_ABORTED) {
+        return '视频加载已取消。';
+      }
+      if (mediaError.code === MediaError.MEDIA_ERR_NETWORK) {
+        return '视频加载失败，可能是本地文件读取中断。';
+      }
+      if (mediaError.code === MediaError.MEDIA_ERR_DECODE) {
+        return '视频解码失败，通常是浏览器不支持这个 MKV 里的编码。';
+      }
+      if (mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        return '浏览器不支持这个视频文件。MKV 容器或其中的编码可能不兼容。';
+      }
+
+      return '当前文件无法播放，可能是浏览器不支持该视频格式或编码。';
+    }
+
+    function renderPlaylist() {
+      playlist.innerHTML = '';
+
+      if (!currentPlaylist.length) {
+        const empty = document.createElement('div');
+        empty.className = 'playlist-empty';
+        empty.textContent = '选择单个视频、多个视频，或整个文件夹后，这里会自动生成播放列表。';
+        playlist.appendChild(empty);
+        playlistMeta.textContent = '未加载文件';
+        updatePlaylistControls();
+        updateStatusBar();
+        return;
+      }
+
+      playlistMeta.textContent = `共 ${currentPlaylist.length} 个视频`;
+
+      currentPlaylist.forEach((item, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `playlist-item${index === currentPlaylistIndex ? ' active' : ''}`;
+        button.innerHTML = `
+          <span class="playlist-item-name">${getPlaylistLabel(item)}</span>
+          <span class="playlist-item-meta">${formatFileSize(item.file.size)}${item.videoId ? ` · ${item.videoId}` : ''}</span>
+        `;
+        button.addEventListener('click', () => {
+          playFileAtIndex(index);
+        });
+        playlist.appendChild(button);
+      });
+
+      updatePlaylistControls();
+      updateStatusBar();
     }
 
     function updateDanmuSettings() {
@@ -636,6 +889,8 @@
         return false;
       }
 
+      let loaded = false;
+
       try {
         const params = new URLSearchParams({
           id: videoId,
@@ -646,53 +901,116 @@
         }
         const res = await fetch(`/api/danmu?${params.toString()}`);
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || '弹幕加载失败');
+        }
         danmus = data.danmus.sort((a, b) => a.time - b.time);
         updateStatusBar({
           count: data.count,
           fromCache: data.fromCache,
           forceRefresh: data.forceRefresh
         });
+        loaded = true;
       } catch (error) {
-        // 造一些超密集的假数据测试性能
-        danmus = Array.from({ length: 800 }, (_, i) => ({
-          text: `性能压测弹幕 ${i + 1} 性能压测弹幕`,
-          time: i * 0.1, // 每 0.1 秒发一条
-          color: i % 2 === 0 ? '#ffffff' : '#ff6699'
-        }));
+        danmus = [];
         updateStatusBar({
-          count: danmus.length,
+          count: 0,
           fromCache: false,
           forceRefresh
         });
+        if (showAlert) {
+          alert(error.message || '弹幕加载失败');
+        }
+        return false;
       }
 
       danmuIndex = 0;
       clearDanmu();
       if (showAlert) alert(`已加载 ${danmus.length} 条弹幕`);
+      return loaded;
+    }
+
+    async function playFileAtIndex(index, { forceRefreshDanmu = false } = {}) {
+      const item = currentPlaylist[index];
+      if (!item) return false;
+
+      saveCurrentPlaybackTime(true);
+      stopDanmuLoop();
+      clearDanmu();
+      danmus = [];
+      danmuIndex = 0;
+
+      currentPlaylistIndex = index;
+      currentVideoName = getPlaylistLabel(item);
+      currentVideoMemoryId = buildVideoMemoryId(item.file);
+      pendingResumeTime = getSavedPlaybackTime(currentVideoMemoryId);
+
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = '';
+      }
+
+      currentObjectUrl = URL.createObjectURL(item.file);
+      video.addEventListener('canplay', () => {
+        video.play().catch(() => {});
+      }, { once: true });
+      video.src = currentObjectUrl;
+      updatePlayerSize();
+
+      const autoVideoId = item.videoId || detectVideoIdFromName(item.file.name);
+      bvidInput.value = autoVideoId;
+      if (autoVideoId) {
+        await applyDanmuForVideoId(autoVideoId, {
+          showAlert: false,
+          forceRefresh: forceRefreshDanmu
+        });
+      } else {
+        updateStatusBar({
+          count: 0,
+          fromCache: null,
+          forceRefresh: false,
+          fileName: currentVideoName
+        });
+      }
+
+      renderPlaylist();
+      updateStatusBar({ fileName: currentVideoName });
       return true;
     }
 
-    videoFile.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (file) {
-        updateStatusBar({ fileName: file.name });
-        saveCurrentPlaybackTime(true);
-        currentVideoMemoryId = buildVideoMemoryId(file);
-        pendingResumeTime = getSavedPlaybackTime(currentVideoMemoryId);
-        video.addEventListener('canplay', () => {
-          video.play().catch(() => {});
-        }, { once: true });
-        video.src = URL.createObjectURL(file);
-        updatePlayerSize();
-        danmuIndex = 0;
-        clearDanmu();
-        stopDanmuLoop();
+    function loadFilesIntoPlaylist(files, preferredFileName = '') {
+      const videoFiles = naturalSortFiles(files).filter(isVideoFile);
+      if (!videoFiles.length) {
+        alert('没有找到可播放的视频文件');
+        return;
+      }
 
-        const autoVideoId = file.name.replace(/\.[^.]+$/, '').split('_').pop()?.match(/(BV[0-9A-Za-z]+|ep\d+)/i)?.[0];
-        if (autoVideoId) {
-          bvidInput.value = autoVideoId;
-          applyDanmuForVideoId(autoVideoId, { showAlert: false });
-        }
+      const normalizedPreferred = preferredFileName || videoFiles[0].name;
+      currentPlaylist = videoFiles.map(file => ({
+        file,
+        relativePath: file.webkitRelativePath || file.name,
+        videoId: detectVideoIdFromName(file.name)
+      }));
+
+      const startIndex = currentPlaylist.findIndex(item =>
+        item.file.name === normalizedPreferred || item.relativePath === normalizedPreferred
+      );
+
+      playFileAtIndex(startIndex === -1 ? 0 : startIndex);
+    }
+
+    videoFile.addEventListener('change', e => {
+      const files = Array.from(e.target.files || []);
+      if (files.length) {
+        loadFilesIntoPlaylist(files, files[0].name);
+      }
+    });
+
+    pickFolderBtn.addEventListener('click', () => folderPicker.click());
+    folderPicker.addEventListener('change', e => {
+      const files = Array.from(e.target.files || []);
+      if (files.length) {
+        loadFilesIntoPlaylist(files, files.find(isVideoFile)?.webkitRelativePath || files[0].name);
       }
     });
 
@@ -704,6 +1022,18 @@
         pendingResumeTime = null;
       }
     });
+    video.addEventListener('error', () => {
+      stopDanmuLoop();
+      const item = currentPlaylist[currentPlaylistIndex];
+      const fileName = item ? getPlaylistLabel(item) : currentVideoName;
+      updateStatusBar({
+        count: 0,
+        fromCache: null,
+        forceRefresh: false,
+        fileName
+      });
+      alert(`${fileName} 无法播放。\n\n${getVideoErrorMessage()}\n\n更稳的做法是转成 MP4（H.264 + AAC）或 WebM。`);
+    });
     video.addEventListener('play', startDanmuLoop);
     video.addEventListener('pause', () => {
       stopDanmuLoop();
@@ -713,6 +1043,9 @@
       stopDanmuLoop();
       saveCurrentPlaybackTime(true);
       updatePlaybackStatus();
+      if (currentPlaylistIndex >= 0 && currentPlaylistIndex < currentPlaylist.length - 1) {
+        playFileAtIndex(currentPlaylistIndex + 1);
+      }
     });
     video.addEventListener('timeupdate', () => {
       saveCurrentPlaybackTime();
@@ -733,10 +1066,26 @@
     refreshDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim(), {
       forceRefresh: true
     }));
+    prevVideoBtn.addEventListener('click', () => {
+      if (currentPlaylistIndex > 0) {
+        playFileAtIndex(currentPlaylistIndex - 1);
+      }
+    });
+    nextVideoBtn.addEventListener('click', () => {
+      if (currentPlaylistIndex < currentPlaylist.length - 1) {
+        playFileAtIndex(currentPlaylistIndex + 1);
+      }
+    });
     toggleStatusBtn.addEventListener('click', () => {
       setStatusBarVisible(statusBar.classList.contains('hidden'));
     });
-    window.addEventListener('beforeunload', () => saveCurrentPlaybackTime(true));
+    window.addEventListener('beforeunload', () => {
+      saveCurrentPlaybackTime(true);
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+      }
+    });
+    renderPlaylist();
   </script>
 </body>
 </html>

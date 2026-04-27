@@ -309,6 +309,27 @@ function sanitizeFileName(name) {
         .trim();
 }
 
+function extractEpisodeNumberFromFileName(fileName) {
+    const baseName = path.basename(fileName, path.extname(fileName));
+    const patterns = [
+        /S\d+E(\d{1,3})/i,
+        /(?:^|[\s._-])EP?(\d{1,3})(?=$|[\s._-])/i,
+        /第\s*(\d{1,3})\s*[集话]/i
+    ];
+
+    for (const pattern of patterns) {
+        const match = baseName.match(pattern);
+        if (match) {
+            const episodeNumber = Number.parseInt(match[1], 10);
+            if (Number.isInteger(episodeNumber) && episodeNumber > 0) {
+                return episodeNumber;
+            }
+        }
+    }
+
+    return null;
+}
+
 async function fetchSeasonInfo(epId) {
     const url = `https://api.bilibili.com/pgc/view/web/season?ep_id=${epId}`;
 
@@ -351,7 +372,9 @@ app.post('/api/rename', async (req, res) => {
 
         const season = await fetchSeasonInfo(epId);
         const seasonTitle = sanitizeFileName(season.title);
-        const episodes = season.episodes;
+        const episodes = (season.episodes || []).slice().sort((a, b) => {
+            return Number(a?.title || 0) - Number(b?.title || 0);
+        });
 
         const videoFiles = fs.readdirSync(folderPath)
             .filter(file => /\.(mp4|mkv|avi|mov)$/i.test(file))
@@ -364,13 +387,26 @@ app.post('/api/rename', async (req, res) => {
         }
 
         const renamedFiles = [];
+        const usedEpisodeIds = new Set();
 
         videoFiles.forEach((file, index) => {
-            if (!episodes[index]) return;
+            const detectedEpisodeNumber = extractEpisodeNumberFromFileName(file);
+            let ep = null;
 
-            const ep = episodes[index];
+            if (detectedEpisodeNumber != null) {
+                ep = episodes.find(item => Number(item?.title || 0) === detectedEpisodeNumber);
+            }
+
+            if (!ep) {
+                ep = episodes[index];
+            }
+
+            if (!ep || usedEpisodeIds.has(ep.id)) return;
+
             const ext = path.extname(file);
-            const episodeNumber = String(index + 1).padStart(2, '0');
+            const episodeNumber = String(
+                detectedEpisodeNumber != null ? detectedEpisodeNumber : Number(ep.title || index + 1)
+            ).padStart(2, '0');
 
             const newName = `EP${episodeNumber}_${seasonTitle}_ep${ep.id}${ext}`;
 
@@ -378,10 +414,13 @@ app.post('/api/rename', async (req, res) => {
             const newPath = path.join(folderPath, newName);
 
             fs.renameSync(oldPath, newPath);
+            usedEpisodeIds.add(ep.id);
 
             renamedFiles.push({
                 oldName: file,
-                newName
+                newName,
+                matchedEpisode: Number(ep.title || episodeNumber),
+                matchedEpId: ep.id
             });
         });
 

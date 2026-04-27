@@ -40,6 +40,13 @@
       font-size: 14px;
     }
 
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 150px;
+      gap: 10px;
+      align-items: center;
+    }
+
     button {
       margin-top: 20px;
       width: 100%;
@@ -64,6 +71,19 @@
       white-space: pre-wrap;
       margin-top: 20px;
     }
+
+    .hint {
+      margin-top: 8px;
+      color: #aaa;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .secondary-btn {
+      margin-top: 0;
+      width: 100%;
+      background: #2b2f3a;
+    }
   </style>
 </head>
 
@@ -72,7 +92,12 @@
 
   <div class="card">
     <label>本地视频文件夹路径（完整路径）</label>
-    <input type="text" id="folderPath" placeholder="例如 /Users/yang/Downloads/长安的荔枝">
+    <div class="row">
+      <input type="text" id="folderPath" placeholder="例如 /Users/yang/Downloads/长安的荔枝">
+      <button type="button" id="pickFolderBtn" class="secondary-btn">选择文件夹</button>
+    </div>
+    <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
+    <div class="hint" id="folderHint">浏览器安全限制下，无法自动读取你电脑里的真实完整路径；选择文件夹后这里只会帮你识别目录名，完整路径仍需手动确认。</div>
 
     <label>B站任意剧集链接（ep链接）</label>
     <input type="text" id="biliUrl" placeholder="例如 https://www.bilibili.com/bangumi/play/ep473314">
@@ -85,9 +110,40 @@
   <script>
     const renameBtn = document.getElementById('renameBtn');
     const resultBox = document.getElementById('result');
+    const folderPathInput = document.getElementById('folderPath');
+    const pickFolderBtn = document.getElementById('pickFolderBtn');
+    const folderPicker = document.getElementById('folderPicker');
+    const folderHint = document.getElementById('folderHint');
+
+    function inferFolderName(files) {
+      const firstFile = files[0];
+      if (!firstFile) return '';
+      const relativePath = firstFile.webkitRelativePath || '';
+      return relativePath.split('/')[0] || '';
+    }
+
+    pickFolderBtn.addEventListener('click', () => {
+      folderPicker.click();
+    });
+
+    folderPicker.addEventListener('change', () => {
+      const files = Array.from(folderPicker.files || []);
+      const folderName = inferFolderName(files);
+
+      if (!folderName) {
+        folderHint.textContent = '没有从所选内容里识别到文件夹名，你仍然可以手动填写完整路径。';
+        return;
+      }
+
+      if (!folderPathInput.value.trim()) {
+        folderPathInput.value = folderName;
+      }
+
+      folderHint.textContent = `已选择文件夹“${folderName}”。浏览器仍然拿不到真实绝对路径，如果接口需要像 /Users/yang/... 这样的完整路径，请把输入框改成你本机的实际路径。`;
+    });
 
     renameBtn.addEventListener('click', async () => {
-      const folderPath = document.getElementById('folderPath').value.trim();
+      const folderPath = folderPathInput.value.trim();
       const biliUrl = document.getElementById('biliUrl').value.trim();
 
       if (!folderPath || !biliUrl) {
