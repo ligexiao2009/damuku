@@ -319,7 +319,7 @@
           </div>
         </div>
       </div>
-      <div class="control-hint">左侧文件框用于选择单个或多个视频；“选择文件夹”才会一次导入整个目录。自动弹幕会优先识别文件名里的 `ep473307` 或 `BV...`，不会再把 `EP02` 当成弹幕 ID。</div>
+      <div class="control-hint">左侧文件框会把新选中的视频追加到当前播放列表；“选择文件夹”会用整个目录替换当前列表。自动弹幕会优先识别文件名里的 `ep473307` 或 `BV...`，不会再把 `EP02` 当成弹幕 ID。</div>
 
       <div class="status-bar" id="statusBar">
         <div class="status-item">策略 <strong id="statusStrategy">seg.so</strong></div>
@@ -944,6 +944,8 @@
       currentVideoName = getPlaylistLabel(item);
       currentVideoMemoryId = buildVideoMemoryId(item.file);
       pendingResumeTime = getSavedPlaybackTime(currentVideoMemoryId);
+      renderPlaylist();
+      updateStatusBar({ fileName: currentVideoName, count: 0, fromCache: null, forceRefresh: false });
 
       if (currentObjectUrl) {
         URL.revokeObjectURL(currentObjectUrl);
@@ -973,7 +975,6 @@
         });
       }
 
-      renderPlaylist();
       updateStatusBar({ fileName: currentVideoName });
       return true;
     }
@@ -991,6 +992,12 @@
         relativePath: file.webkitRelativePath || file.name,
         videoId: detectVideoIdFromName(file.name)
       }));
+      currentPlaylistIndex = -1;
+      currentVideoName = '未选择';
+      danmus = [];
+      danmuIndex = 0;
+      clearDanmu();
+      renderPlaylist();
 
       const startIndex = currentPlaylist.findIndex(item =>
         item.file.name === normalizedPreferred || item.relativePath === normalizedPreferred
@@ -999,11 +1006,48 @@
       playFileAtIndex(startIndex === -1 ? 0 : startIndex);
     }
 
+    function appendFilesToPlaylist(files) {
+      const videoFiles = naturalSortFiles(files).filter(isVideoFile);
+      if (!videoFiles.length) {
+        alert('没有找到可播放的视频文件');
+        return;
+      }
+
+      const existingKeys = new Set(
+        currentPlaylist.map(item => buildVideoMemoryId(item.file))
+      );
+
+      const newItems = videoFiles
+        .filter(file => !existingKeys.has(buildVideoMemoryId(file)))
+        .map(file => ({
+          file,
+          relativePath: file.webkitRelativePath || file.name,
+          videoId: detectVideoIdFromName(file.name)
+        }));
+
+      if (!newItems.length) {
+        alert('这些文件已经在播放列表里了');
+        return;
+      }
+
+      const shouldAutoplayFirstNewItem = currentPlaylist.length === 0;
+      currentPlaylist = [...currentPlaylist, ...newItems];
+      renderPlaylist();
+
+      if (shouldAutoplayFirstNewItem) {
+        playFileAtIndex(0);
+      } else {
+        updateStatusBar();
+      }
+    }
+
     videoFile.addEventListener('change', e => {
       const files = Array.from(e.target.files || []);
       if (files.length) {
-        loadFilesIntoPlaylist(files, files[0].name);
+        appendFilesToPlaylist(files);
       }
+      e.target.value = '';
+      folderPicker.value = '';
     });
 
     pickFolderBtn.addEventListener('click', () => folderPicker.click());
@@ -1012,6 +1056,8 @@
       if (files.length) {
         loadFilesIntoPlaylist(files, files.find(isVideoFile)?.webkitRelativePath || files[0].name);
       }
+      e.target.value = '';
+      videoFile.value = '';
     });
 
     video.addEventListener('loadedmetadata', () => {
