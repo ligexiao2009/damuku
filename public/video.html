@@ -1030,15 +1030,10 @@
         return;
       }
 
-      const shouldAutoplayFirstNewItem = currentPlaylist.length === 0;
+      const firstNewIndex = currentPlaylist.length;
       currentPlaylist = [...currentPlaylist, ...newItems];
       renderPlaylist();
-
-      if (shouldAutoplayFirstNewItem) {
-        playFileAtIndex(0);
-      } else {
-        updateStatusBar();
-      }
+      playFileAtIndex(firstNewIndex);
     }
 
     videoFile.addEventListener('change', e => {
