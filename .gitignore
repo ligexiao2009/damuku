@@ -21,6 +21,7 @@ Thumbs.db
 cache/
 *.swp
 *.swo
+*.mp4
 *~
 
 # Environment variables

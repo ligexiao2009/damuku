@@ -136,14 +136,14 @@ app.get('/api/danmu', async (req, res) => {
             return res.json({ ...JSON.parse(fs.readFileSync(cacheFile, 'utf-8')), fromCache: true });
         }
 
-        const videoMeta = id.toUpperCase().startsWith('BV') 
-            ? await fetchVideoMetaByBvid(id) 
+        const videoMeta = id.toUpperCase().startsWith('BV')
+            ? await fetchVideoMetaByBvid(id)
             : await fetchVideoMetaByEpid(id.replace(/^ep/i, ''));
 
         let danmus = [];
         if (strategy === 'seg.so') {
             const segmentCount = Math.max(1, Math.ceil((videoMeta.duration || 0) / 360));
-            const segments = await Promise.all(Array.from({ length: segmentCount }, (_, i) => 
+            const segments = await Promise.all(Array.from({ length: segmentCount }, (_, i) =>
                 fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: i + 1 })
             ));
             danmus = segments.flatMap(parseDanmuSeg);
@@ -162,7 +162,7 @@ app.get('/api/danmu', async (req, res) => {
 
 app.get('/api/videos', (req, res) => {
     try {
-        console.log("__dirname"+__dirname)
+        console.log("__dirname" + __dirname)
         const files = fs.readdirSync(__dirname);
         // 过滤出视频文件
         const videoFiles = files.filter(f => /\.(mp4|mkv|mov|webm|avi)$/i.test(f));
@@ -189,7 +189,7 @@ app.get('/video/:name', (req, res) => {
         const start = parseInt(parts[0], 10);
         const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
         const chunksize = (end - start) + 1;
-        const file = fs.createReadStream(videoPath, {start, end});
+        const file = fs.createReadStream(videoPath, { start, end });
         const head = {
             'Content-Range': `bytes ${start}-${end}/${fileSize}`,
             'Accept-Ranges': 'bytes',
