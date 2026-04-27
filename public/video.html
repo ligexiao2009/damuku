@@ -71,9 +71,10 @@
       font-weight: 700;
     }
 
+    /* 优化点：引入 flex 使控件排列更具弹性，适配新增按钮 */
     .controls {
-      display: grid;
-      grid-template-columns: minmax(145px, 0.95fr) 110px minmax(120px, 0.65fr) 88px 98px 98px 82px 112px minmax(360px, 1.5fr);
+      display: flex;
+      flex-wrap: wrap;
       gap: 6px;
       padding: 8px;
       border-radius: 14px;
@@ -83,6 +84,15 @@
       backdrop-filter: blur(18px);
       align-items: stretch;
     }
+
+    .controls > * {
+      flex: 1 1 auto;
+    }
+    
+    #videoFile { flex: 1 1 160px; }
+    #bvidInput { flex: 1 1 140px; }
+    #strategySelect { flex: 0 0 88px; }
+    .settings-row { flex: 1 1 100%; }
 
     input, button, select { border: none; border-radius: 10px; min-height: 34px; }
     
@@ -110,6 +120,7 @@
       color: white; cursor: pointer; font-size: 12px; font-weight: 700;
       box-shadow: 0 10px 24px rgba(255, 77, 115, 0.25);
       transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+      white-space: nowrap;
     }
     button:hover {
       transform: translateY(-1px); filter: brightness(1.04);
@@ -118,6 +129,9 @@
     button:active { transform: translateY(0); }
     #fullScreenBtn { background: linear-gradient(135deg, #293549 0%, #1b2433 100%); box-shadow: none; }
     #prevVideoBtn, #nextVideoBtn, #pickFolderBtn { background: linear-gradient(135deg, #293549 0%, #1b2433 100%); box-shadow: none; }
+    /* 为新按钮指定样式 */
+    #loadServerFilesBtn { background: linear-gradient(135deg, #0078d7 0%, #005a9e 100%); box-shadow: none; }
+    
     button:disabled {
       cursor: not-allowed;
       opacity: 0.45;
@@ -253,14 +267,12 @@
     }
     video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
 
-    /* 优化点1：彻底隔离渲染树，防止弹幕影响外面布局 */
     #danmaku-layer {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       pointer-events: none; overflow: hidden; z-index: 999;
       contain: layout style paint; 
     }
 
-    /* 优化点2：废弃 left/top 定位，只使用 transform GPU 加速计算，默认藏在屏幕外 */
     .danmu {
       position: absolute; left: 0; top: 0;
       transform: translate3d(-9999px, -9999px, 0); 
@@ -271,13 +283,12 @@
     }
 
     @media (max-width: 980px) {
-      .controls { grid-template-columns: 1fr 1fr; }
       .settings-row { grid-column: 1 / -1; }
       .viewer-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 720px) {
       body { padding: 16px 12px 22px; }
-      .controls { grid-template-columns: 1fr; padding: 12px; }
+      .controls { flex-direction: column; padding: 12px; }
       .settings-row { grid-template-columns: 1fr; }
       .player-container { border-radius: 18px; }
       .playlist-list { max-height: 260px; }
@@ -292,6 +303,7 @@
         <input type="file" id="videoFile" accept="video/*" multiple>
         <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
         <button id="pickFolderBtn">选择文件夹</button>
+        <button id="loadServerFilesBtn">获取服务器视频</button>
         <input type="text" id="bvidInput" placeholder="输入BV号或ep号">
         <select id="strategySelect" title="弹幕获取策略">
           <option value="xml">XML</option>
@@ -319,7 +331,7 @@
           </div>
         </div>
       </div>
-      <div class="control-hint">左侧文件框会把新选中的视频追加到当前播放列表；“选择文件夹”会用整个目录替换当前列表。自动弹幕会优先识别文件名里的 `ep473307` 或 `BV...`，不会再把 `EP02` 当成弹幕 ID。</div>
+      <div class="control-hint">如果从 iPad 等设备访问网页，请点击“获取服务器视频”播放 Mac 同目录下的视频文件；自动弹幕会优先识别文件名里的 `ep473307` 或 `BV...`。</div>
 
       <div class="status-bar" id="statusBar">
         <div class="status-item">策略 <strong id="statusStrategy">seg.so</strong></div>
@@ -363,6 +375,7 @@
     const videoFile = document.getElementById('videoFile');
     const folderPicker = document.getElementById('folderPicker');
     const pickFolderBtn = document.getElementById('pickFolderBtn');
+    const loadServerFilesBtn = document.getElementById('loadServerFilesBtn'); // 新增按钮
     const loadDanmuBtn = document.getElementById('loadDanmu');
     const refreshDanmuBtn = document.getElementById('refreshDanmuBtn');
     const toggleStatusBtn = document.getElementById('toggleStatusBtn');
@@ -409,7 +422,7 @@
     // 性能优化全局变量缓存
     let layerW = 0; 
     let layerH = 0;
-    const danmuPool = []; // DOM 对象池，防止GC卡顿
+    const danmuPool = []; 
     const danmuMeasureCanvas = document.createElement('canvas');
     const danmuMeasureContext = danmuMeasureCanvas.getContext('2d');
     const danmuWidthCache = new Map();
@@ -420,33 +433,20 @@
     const maxDanmuPerFrame = 6;
     const videoFilePattern = /\.(mp4|mkv|avi|mov|m4v|webm)$/i;
 
-    // 优化点3：时间插值算法，弥补 video.currentTime 刷新过慢的毛病
     let lastVideoTime = 0;
     let lastPerfTime = 0;
 
     function readPlaybackMemory() {
-      try {
-        return JSON.parse(localStorage.getItem(playbackMemoryKey) || '{}');
-      } catch (error) {
-        return {};
-      }
+      try { return JSON.parse(localStorage.getItem(playbackMemoryKey) || '{}'); } catch (error) { return {}; }
     }
 
-    function writePlaybackMemory(memory) {
-      localStorage.setItem(playbackMemoryKey, JSON.stringify(memory));
-    }
+    function writePlaybackMemory(memory) { localStorage.setItem(playbackMemoryKey, JSON.stringify(memory)); }
 
     function readDanmuSettings() {
-      try {
-        return JSON.parse(localStorage.getItem(danmuSettingsKey) || '{}');
-      } catch (error) {
-        return {};
-      }
+      try { return JSON.parse(localStorage.getItem(danmuSettingsKey) || '{}'); } catch (error) { return {}; }
     }
 
-    function writeDanmuSettings(settings) {
-      localStorage.setItem(danmuSettingsKey, JSON.stringify(settings));
-    }
+    function writeDanmuSettings(settings) { localStorage.setItem(danmuSettingsKey, JSON.stringify(settings)); }
 
     function readStatusBarVisible() {
       const saved = localStorage.getItem(statusBarVisibleKey);
@@ -465,9 +465,7 @@
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
       const secs = totalSeconds % 60;
-      if (hours > 0) {
-        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-      }
+      if (hours > 0) return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
       return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
 
@@ -480,9 +478,7 @@
     }
 
     function getDanmuDisplayText(danmu) {
-      if (statusBar.classList.contains('hidden')) {
-        return danmu.text;
-      }
+      if (statusBar.classList.contains('hidden')) return danmu.text;
       return `[${formatDanmuTime(danmu.time)}] ${danmu.text}`;
     }
 
@@ -495,15 +491,9 @@
 
     function applySavedDanmuSettings() {
       const settings = readDanmuSettings();
-      if (Number.isFinite(Number(settings.speed))) {
-        speedControl.value = String(settings.speed);
-      }
-      if (Number.isFinite(Number(settings.area))) {
-        areaControl.value = String(settings.area);
-      }
-      if (Number.isFinite(Number(settings.offset))) {
-        offsetControl.value = String(settings.offset);
-      }
+      if (Number.isFinite(Number(settings.speed))) speedControl.value = String(settings.speed);
+      if (Number.isFinite(Number(settings.area))) areaControl.value = String(settings.area);
+      if (Number.isFinite(Number(settings.offset))) offsetControl.value = String(settings.offset);
     }
 
     function buildVideoMemoryId(file) {
@@ -542,18 +532,10 @@
     function detectVideoIdFromName(name) {
       if (!name) return '';
       const baseName = name.replace(/\.[^.]+$/, '');
-
       const bvidMatch = baseName.match(/BV[0-9A-Za-z]+/i);
-      if (bvidMatch) {
-        return bvidMatch[0];
-      }
-
-      // 优先识别真实的 B 站 ep id，避免把文件序号 EP02 误判成 ep2
+      if (bvidMatch) return bvidMatch[0];
       const explicitEpMatch = baseName.match(/(?:^|[_\s-])(ep\d{4,})(?=$|[_\s-])/i);
-      if (explicitEpMatch) {
-        return explicitEpMatch[1];
-      }
-
+      if (explicitEpMatch) return explicitEpMatch[1];
       return '';
     }
 
@@ -566,12 +548,8 @@
 
     function saveCurrentPlaybackTime(force = false) {
       if (!currentVideoMemoryId || !video.duration || !Number.isFinite(video.currentTime)) return;
-
       const currentTime = video.currentTime;
-      const safeTime = force
-        ? Math.min(currentTime, Math.max(0, video.duration - 1))
-        : currentTime;
-
+      const safeTime = force ? Math.min(currentTime, Math.max(0, video.duration - 1)) : currentTime;
       const memory = readPlaybackMemory();
       if (video.ended || safeTime >= video.duration - 1) {
         delete memory[currentVideoMemoryId];
@@ -587,13 +565,9 @@
       statusCache.textContent = fromCache == null ? '未加载' : (fromCache ? '命中' : '重拉');
       statusRefresh.textContent = forceRefresh ? '是' : '否';
       statusOffset.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
-      statusPlaylist.textContent = currentPlaylist.length
-        ? `${currentPlaylistIndex + 1} / ${currentPlaylist.length}`
-        : '0 / 0';
+      statusPlaylist.textContent = currentPlaylist.length ? `${currentPlaylistIndex + 1} / ${currentPlaylist.length}` : '0 / 0';
       updatePlaybackStatus();
-      if (fileName) {
-        currentVideoName = fileName;
-      }
+      if (fileName) currentVideoName = fileName;
       statusFile.textContent = currentVideoName;
     }
 
@@ -604,33 +578,20 @@
 
     function getVideoErrorMessage() {
       const mediaError = video.error;
-      if (!mediaError) {
-        return '当前文件无法播放，可能是浏览器不支持该视频格式或编码。';
-      }
-
-      if (mediaError.code === MediaError.MEDIA_ERR_ABORTED) {
-        return '视频加载已取消。';
-      }
-      if (mediaError.code === MediaError.MEDIA_ERR_NETWORK) {
-        return '视频加载失败，可能是本地文件读取中断。';
-      }
-      if (mediaError.code === MediaError.MEDIA_ERR_DECODE) {
-        return '视频解码失败，通常是浏览器不支持这个 MKV 里的编码。';
-      }
-      if (mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-        return '浏览器不支持这个视频文件。MKV 容器或其中的编码可能不兼容。';
-      }
-
+      if (!mediaError) return '当前文件无法播放，可能是浏览器不支持该视频格式或编码。';
+      if (mediaError.code === MediaError.MEDIA_ERR_ABORTED) return '视频加载已取消。';
+      if (mediaError.code === MediaError.MEDIA_ERR_NETWORK) return '视频加载失败，可能是网络读取中断。';
+      if (mediaError.code === MediaError.MEDIA_ERR_DECODE) return '视频解码失败，通常是浏览器不支持这个文件里的编码。';
+      if (mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) return '浏览器不支持这个视频文件。容器或其中的编码可能不兼容。';
       return '当前文件无法播放，可能是浏览器不支持该视频格式或编码。';
     }
 
     function renderPlaylist() {
       playlist.innerHTML = '';
-
       if (!currentPlaylist.length) {
         const empty = document.createElement('div');
         empty.className = 'playlist-empty';
-        empty.textContent = '选择单个视频、多个视频，或整个文件夹后，这里会自动生成播放列表。';
+        empty.textContent = '选择本地视频，或点击【获取服务器视频】后，这里会自动生成播放列表。';
         playlist.appendChild(empty);
         playlistMeta.textContent = '未加载文件';
         updatePlaylistControls();
@@ -644,13 +605,12 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `playlist-item${index === currentPlaylistIndex ? ' active' : ''}`;
-        button.innerHTML = `
-          <span class="playlist-item-name">${getPlaylistLabel(item)}</span>
-          <span class="playlist-item-meta">${formatFileSize(item.file.size)}${item.videoId ? ` · ${item.videoId}` : ''}</span>
-        `;
-        button.addEventListener('click', () => {
-          playFileAtIndex(index);
-        });
+        
+        let labelHTML = `<span class="playlist-item-name">${getPlaylistLabel(item)}</span>`;
+        let metaHTML = `<span class="playlist-item-meta">${item.isRemote ? '[服务端视频]' : formatFileSize(item.file.size)}${item.videoId ? ` · ${item.videoId}` : ''}</span>`;
+        
+        button.innerHTML = labelHTML + metaHTML;
+        button.addEventListener('click', () => playFileAtIndex(index));
         playlist.appendChild(button);
       });
 
@@ -665,11 +625,7 @@
       speedValue.textContent = `${danmuDuration}秒`;
       areaValue.textContent = `${areaControl.value}%`;
       offsetValue.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
-      writeDanmuSettings({
-        speed: danmuDuration,
-        area: Number(areaControl.value),
-        offset: danmuOffset
-      });
+      writeDanmuSettings({ speed: danmuDuration, area: Number(areaControl.value), offset: danmuOffset });
       laneAvailableAt = [];
       updateStatusBar();
     }
@@ -693,7 +649,6 @@
         player.style.height = `${Math.max(180, height)}px`;
       }
 
-      // 优化点4：缓存容器宽高，绝不在高频循环中调用 clientWidth (防止触发强制回流 Layout Thrashing)
       requestAnimationFrame(() => {
         layerW = danmakuLayer.clientWidth;
         layerH = danmakuLayer.clientHeight;
@@ -709,12 +664,11 @@
       return width;
     }
 
-    // 从对象池获取 DOM 元素，杜绝无休止的 Create 和 Remove
     function getDanmuDom() {
       if (danmuPool.length > 0) return danmuPool.pop();
       const el = document.createElement('div');
       el.className = 'danmu';
-      danmakuLayer.appendChild(el); // 仅在创建时插入 DOM
+      danmakuLayer.appendChild(el); 
       return el;
     }
 
@@ -725,7 +679,7 @@
     }
 
     function sendDanmu(danmu) {
-      if (!layerW || !layerH) return false; // 使用缓存好的宽高
+      if (!layerW || !layerH) return false;
 
       const fontSize = 24;
       const displayText = getDanmuDisplayText(danmu);
@@ -735,15 +689,12 @@
       const laneHeight = fontSize + 8;
       const laneCount = Math.max(1, Math.floor(availableHeight / laneHeight));
 
-      if (laneAvailableAt.length !== laneCount) {
-        laneAvailableAt = Array(laneCount).fill(0);
-      }
+      if (laneAvailableAt.length !== laneCount) laneAvailableAt = Array(laneCount).fill(0);
 
       const now = performance.now();
       let earliestLaneIndex = 0;
       let earliestTime = laneAvailableAt[0] || 0;
 
-      // 找赛道
       for (let i = 0; i < laneAvailableAt.length; i++) {
         if ((laneAvailableAt[i] || 0) <= now) {
           earliestLaneIndex = i;
@@ -755,31 +706,24 @@
         }
       }
 
-      if ((laneAvailableAt[earliestLaneIndex] || 0) > now) {
-        return false;
-      }
+      if ((laneAvailableAt[earliestLaneIndex] || 0) > now) return false;
 
       const el = getDanmuDom();
       el.textContent = displayText;
       el.style.color = danmu.color || '#ffffff';
       el.style.fontSize = fontSize + 'px';
 
-      const y = earliestLaneIndex * laneHeight; // 不使用 CSS Top，全部交给 GPU 算 Transform
+      const y = earliestLaneIndex * laneHeight;
       const travelDistance = layerW + danmuWidth;
       const speedPxPerSecond = travelDistance / danmuDuration;
       const waitSeconds = (danmuWidth + laneGap) / speedPxPerSecond;
       laneAvailableAt[earliestLaneIndex] = now + waitSeconds * 1000;
 
-      // 纯 Transform 动画，将 X 轴和 Y 轴合成在一起
       const animation = el.animate([
         { transform: `translate3d(${layerW}px, ${y}px, 0)` },
         { transform: `translate3d(-${danmuWidth}px, ${y}px, 0)` }
-      ], {
-        duration: danmuDuration * 1000,
-        easing: 'linear'
-      });
+      ], { duration: danmuDuration * 1000, easing: 'linear' });
 
-      // 动画结束，不删除 DOM，丢回对象池重复利用
       animation.onfinish = () => danmuPool.push(el);
       return true;
     }
@@ -793,10 +737,7 @@
           danmuIndex++;
           continue;
         }
-
-        if (sendDanmu(danmus[danmuIndex])) {
-          emittedCount++;
-        }
+        if (sendDanmu(danmus[danmuIndex])) emittedCount++;
         danmuIndex++;
       }
     }
@@ -819,7 +760,6 @@
           return;
         }
 
-        // 使用高精度时钟对 currentTime 进行平滑插值，避免弹幕发射扎堆
         let interpolatedTime = video.currentTime;
         if (video.currentTime !== lastVideoTime) {
           lastVideoTime = video.currentTime;
@@ -832,7 +772,6 @@
         updatePlaybackStatus(interpolatedTime);
         danmuLoopId = requestAnimationFrame(tick);
       };
-
       danmuLoopId = requestAnimationFrame(tick);
     }
 
@@ -857,18 +796,12 @@
     });
 
     player.addEventListener('dblclick', () => {
-      if (!document.fullscreenElement) {
-        player.requestFullscreen().catch(() => {});
-      } else {
-        document.exitFullscreen().catch(() => {});
-      }
+      if (!document.fullscreenElement) player.requestFullscreen().catch(() => {});
+      else document.exitFullscreen().catch(() => {});
     });
 
     player.addEventListener('click', event => {
-      if (event.target !== video && event.target !== danmakuLayer && !video.contains(event.target)) {
-        return;
-      }
-
+      if (event.target !== video && event.target !== danmakuLayer && !video.contains(event.target)) return;
       if (!video.src) return;
 
       const controlsHeight = 48;
@@ -876,11 +809,8 @@
       const clickFromBottom = rect.bottom - event.clientY;
       if (clickFromBottom <= controlsHeight) return;
 
-      if (video.paused) {
-        video.play().catch(() => {});
-      } else {
-        video.pause();
-      }
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
     });
 
     async function applyDanmuForVideoId(videoId, { showAlert = true, forceRefresh = false } = {}) {
@@ -888,39 +818,22 @@
         if (showAlert) alert('请输入BV号或ep号');
         return false;
       }
-
       let loaded = false;
-
       try {
-        const params = new URLSearchParams({
-          id: videoId,
-          strategy: strategySelect.value
-        });
-        if (forceRefresh) {
-          params.set('refresh', '1');
-        }
+        const params = new URLSearchParams({ id: videoId, strategy: strategySelect.value });
+        if (forceRefresh) params.set('refresh', '1');
+        
         const res = await fetch(`/api/danmu?${params.toString()}`);
         const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || '弹幕加载失败');
-        }
+        if (!res.ok) throw new Error(data.error || '弹幕加载失败');
+        
         danmus = data.danmus.sort((a, b) => a.time - b.time);
-        updateStatusBar({
-          count: data.count,
-          fromCache: data.fromCache,
-          forceRefresh: data.forceRefresh
-        });
+        updateStatusBar({ count: data.count, fromCache: data.fromCache, forceRefresh: data.forceRefresh });
         loaded = true;
       } catch (error) {
         danmus = [];
-        updateStatusBar({
-          count: 0,
-          fromCache: false,
-          forceRefresh
-        });
-        if (showAlert) {
-          alert(error.message || '弹幕加载失败');
-        }
+        updateStatusBar({ count: 0, fromCache: false, forceRefresh });
+        if (showAlert) alert(error.message || '弹幕加载失败');
         return false;
       }
 
@@ -952,32 +865,64 @@
         currentObjectUrl = '';
       }
 
-      currentObjectUrl = URL.createObjectURL(item.file);
+      // ========= 关键修改：区分来自服务端的视频和本地选择的视频 =========
+      if (item.isRemote) {
+        // 请求服务端的 /stream 流媒体接口处理分段
+        video.src = `/stream?name=${encodeURIComponent(item.relativePath || item.file.name)}`;
+      } else {
+        // 本地电脑直接选择文件时的 Blob 挂载模式
+        currentObjectUrl = URL.createObjectURL(item.file);
+        video.src = currentObjectUrl;
+      }
+
       video.addEventListener('canplay', () => {
         video.play().catch(() => {});
       }, { once: true });
-      video.src = currentObjectUrl;
+      
       updatePlayerSize();
 
       const autoVideoId = item.videoId || detectVideoIdFromName(item.file.name);
       bvidInput.value = autoVideoId;
       if (autoVideoId) {
-        await applyDanmuForVideoId(autoVideoId, {
-          showAlert: false,
-          forceRefresh: forceRefreshDanmu
-        });
+        await applyDanmuForVideoId(autoVideoId, { showAlert: false, forceRefresh: forceRefreshDanmu });
       } else {
-        updateStatusBar({
-          count: 0,
-          fromCache: null,
-          forceRefresh: false,
-          fileName: currentVideoName
-        });
+        updateStatusBar({ count: 0, fromCache: null, forceRefresh: false, fileName: currentVideoName });
       }
 
       updateStatusBar({ fileName: currentVideoName });
       return true;
     }
+
+    // 新增：向服务端请求同目录下的视频列表 (专供 iPad 局域网访问使用)
+    loadServerFilesBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/videos');
+        const fileNames = await res.json();
+
+        if (!fileNames || fileNames.length === 0) {
+            return alert('服务器当前目录下没有找到视频文件！');
+        }
+
+        currentPlaylist = naturalSortFiles(fileNames.map(name => ({
+            file: { name: name, size: 0, lastModified: 0 },
+            relativePath: name,
+            videoId: detectVideoIdFromName(name),
+            isRemote: true
+        })));
+
+        currentPlaylistIndex = -1;
+        currentVideoName = '未选择';
+        danmus = [];
+        danmuIndex = 0;
+        clearDanmu();
+        renderPlaylist();
+        
+        playFileAtIndex(0);
+      } catch (err) {
+        console.error('获取服务器视频列表失败:', err);
+          alert('获取服务器视频列表失败，请检查 Node.js 服务是否正常启动。');
+      }
+    });
 
     function loadFilesIntoPlaylist(files, preferredFileName = '') {
       const videoFiles = naturalSortFiles(files).filter(isVideoFile);
@@ -990,7 +935,8 @@
       currentPlaylist = videoFiles.map(file => ({
         file,
         relativePath: file.webkitRelativePath || file.name,
-        videoId: detectVideoIdFromName(file.name)
+        videoId: detectVideoIdFromName(file.name),
+        isRemote: false
       }));
       currentPlaylistIndex = -1;
       currentVideoName = '未选择';
@@ -1022,7 +968,8 @@
         .map(file => ({
           file,
           relativePath: file.webkitRelativePath || file.name,
-          videoId: detectVideoIdFromName(file.name)
+          videoId: detectVideoIdFromName(file.name),
+          isRemote: false
         }));
 
       if (!newItems.length) {
@@ -1038,9 +985,7 @@
 
     videoFile.addEventListener('change', e => {
       const files = Array.from(e.target.files || []);
-      if (files.length) {
-        appendFilesToPlaylist(files);
-      }
+      if (files.length) appendFilesToPlaylist(files);
       e.target.value = '';
       folderPicker.value = '';
     });
@@ -1048,9 +993,7 @@
     pickFolderBtn.addEventListener('click', () => folderPicker.click());
     folderPicker.addEventListener('change', e => {
       const files = Array.from(e.target.files || []);
-      if (files.length) {
-        loadFilesIntoPlaylist(files, files.find(isVideoFile)?.webkitRelativePath || files[0].name);
-      }
+      if (files.length) loadFilesIntoPlaylist(files, files.find(isVideoFile)?.webkitRelativePath || files[0].name);
       e.target.value = '';
       videoFile.value = '';
     });
@@ -1063,18 +1006,15 @@
         pendingResumeTime = null;
       }
     });
+    
     video.addEventListener('error', () => {
       stopDanmuLoop();
       const item = currentPlaylist[currentPlaylistIndex];
       const fileName = item ? getPlaylistLabel(item) : currentVideoName;
-      updateStatusBar({
-        count: 0,
-        fromCache: null,
-        forceRefresh: false,
-        fileName
-      });
-      alert(`${fileName} 无法播放。\n\n${getVideoErrorMessage()}\n\n更稳的做法是转成 MP4（H.264 + AAC）或 WebM。`);
+      updateStatusBar({ count: 0, fromCache: null, forceRefresh: false, fileName });
+      alert(`${fileName} 无法播放。\n\n${getVideoErrorMessage()}\n\n请尝试在 Safari 中播放或将视频转码为 H.264 MP4 格式。`);
     });
+    
     video.addEventListener('play', startDanmuLoop);
     video.addEventListener('pause', () => {
       stopDanmuLoop();
@@ -1104,28 +1044,19 @@
     });
 
     loadDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim()));
-    refreshDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim(), {
-      forceRefresh: true
-    }));
+    refreshDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim(), { forceRefresh: true }));
     prevVideoBtn.addEventListener('click', () => {
-      if (currentPlaylistIndex > 0) {
-        playFileAtIndex(currentPlaylistIndex - 1);
-      }
+      if (currentPlaylistIndex > 0) playFileAtIndex(currentPlaylistIndex - 1);
     });
     nextVideoBtn.addEventListener('click', () => {
-      if (currentPlaylistIndex < currentPlaylist.length - 1) {
-        playFileAtIndex(currentPlaylistIndex + 1);
-      }
+      if (currentPlaylistIndex < currentPlaylist.length - 1) playFileAtIndex(currentPlaylistIndex + 1);
     });
-    toggleStatusBtn.addEventListener('click', () => {
-      setStatusBarVisible(statusBar.classList.contains('hidden'));
-    });
+    toggleStatusBtn.addEventListener('click', () => setStatusBarVisible(statusBar.classList.contains('hidden')));
     window.addEventListener('beforeunload', () => {
       saveCurrentPlaybackTime(true);
-      if (currentObjectUrl) {
-        URL.revokeObjectURL(currentObjectUrl);
-      }
+      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     });
+    
     renderPlaylist();
   </script>
 </body>
