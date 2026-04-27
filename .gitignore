@@ -19,6 +19,7 @@ Thumbs.db
 .idea/
 .claude/
 cache/
+playback/
 *.swp
 *.swo
 *.mp4

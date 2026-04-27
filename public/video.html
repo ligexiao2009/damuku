@@ -1005,7 +1005,7 @@
       const item = currentPlaylist[index];
       if (!item) return false;
 
-      saveCurrentPlaybackTime(true);
+      savePlaybackProgress(true);
       stopDanmuLoop();
       clearDanmu();
       danmus = [];
@@ -1014,7 +1014,7 @@
       currentPlaylistIndex = index;
       currentVideoName = getPlaylistLabel(item);
       currentVideoMemoryId = buildVideoMemoryId(item.file);
-      pendingResumeTime = getSavedPlaybackTime(currentVideoMemoryId);
+      pendingResumeTime = await getPlaybackProgress(currentVideoMemoryId);
       renderPlaylist();
       updateStatusBar({ fileName: currentVideoName, count: 0, fromCache: null, forceRefresh: false });
 
@@ -1176,18 +1176,18 @@
     video.addEventListener('play', startDanmuLoop);
     video.addEventListener('pause', () => {
       stopDanmuLoop();
-      saveCurrentPlaybackTime(true);
+      savePlaybackProgress(true);
     });
     video.addEventListener('ended', () => {
       stopDanmuLoop();
-      saveCurrentPlaybackTime(true);
+      savePlaybackProgress(true);
       updatePlaybackStatus();
       if (currentPlaylistIndex >= 0 && currentPlaylistIndex < currentPlaylist.length - 1) {
         playFileAtIndex(currentPlaylistIndex + 1);
       }
     });
     video.addEventListener('timeupdate', () => {
-      saveCurrentPlaybackTime();
+      savePlaybackProgress();
       updatePlaybackStatus();
     });
 
@@ -1211,9 +1211,60 @@
     });
     toggleStatusBtn.addEventListener('click', () => setStatusBarVisible(statusBar.classList.contains('hidden')));
     window.addEventListener('beforeunload', () => {
-      saveCurrentPlaybackTime(true);
+      savePlaybackProgress(true);
       if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     });
+
+    // 新增：将播放进度保存到服务器，以便在 iPad 等设备访问时能够继续上次的观看位置
+    let lastProgressSave = 0;
+    async function savePlaybackProgress(force = false) {
+
+      const now = Date.now();
+
+      if (!force && now - lastProgressSave < 5000) {
+        return;
+      }
+      lastProgressSave = now;
+      if (!currentVideoMemoryId || !video.duration || !Number.isFinite(video.currentTime)) return;
+
+      let currentTime = video.currentTime;
+
+      if (force) {
+        currentTime = Math.min(currentTime, Math.max(0, video.duration - 1));
+      }
+
+      if (video.ended || currentTime >= video.duration - 1) {
+        currentTime = 0;
+      }
+
+      try {
+        await fetch('/api/progress', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            id: currentVideoMemoryId,
+            time: currentTime
+          })
+        });
+      } catch (err) {
+        console.error('保存播放记录失败:', err);
+      }
+    }
+    // 定期保存播放进度到服务器，间隔为 15 秒
+    async function getPlaybackProgress(id) {
+      if (!id) return 0;
+
+      try {
+        const res = await fetch(`/api/progress?id=${encodeURIComponent(id)}`);
+        const data = await res.json();
+        return Number(data.time || 0);
+      } catch (err) {
+        console.error('获取播放记录失败:', err);
+        return 0;
+      }
+    }
 
     renderPlaylist();
   </script>

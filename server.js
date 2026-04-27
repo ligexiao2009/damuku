@@ -44,6 +44,9 @@ message DmSegMobileReply {
 }
 `;
 
+const PLAYBACK_DIR = path.join(__dirname, 'playback');
+if (!fs.existsSync(PLAYBACK_DIR)) fs.mkdirSync(PLAYBACK_DIR);
+
 const dmRoot = protobuf.parse(DM_PROTO).root;
 const DmSegMobileReply = dmRoot.lookupType('DmSegMobileReply');
 
@@ -249,6 +252,42 @@ app.get('/stream', (req, res) => {
         res.writeHead(200, head);
         fs.createReadStream(videoPath).pipe(res);
     }
+});
+
+
+// ============== 视频流媒体分段接口结束 ==============
+
+// 保存播放进度接口
+app.post('/api/progress', (req, res) => {
+    const { id, time } = req.body;
+
+    if (!id) return res.status(400).json({ error: '缺少ID' });
+
+    const safeId = encodeURIComponent(id);
+    const file = path.join(PLAYBACK_DIR, `${safeId}.json`);
+
+    fs.writeFileSync(file, JSON.stringify({
+        id,
+        time,
+        updatedAt: Date.now()
+    }));
+
+    res.json({ success: true });
+});
+// 获取播放进度接口
+app.get('/api/progress', (req, res) => {
+    const { id } = req.query;
+
+    if (!id) return res.status(400).json({ error: '缺少ID' });
+
+    const safeId = encodeURIComponent(id);
+    const file = path.join(PLAYBACK_DIR, `${safeId}.json`);
+
+    if (!fs.existsSync(file)) {
+        return res.json({ time: 0 });
+    }
+
+    res.json(JSON.parse(fs.readFileSync(file, 'utf-8')));
 });
 
 app.listen(PORT, '0.0.0.0', () => {
