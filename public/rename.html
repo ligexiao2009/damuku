@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>B站剧集批量重命名工具</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+      padding: 30px;
+      max-width: 900px;
+      margin: auto;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .card {
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      margin-bottom: 8px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      background: #ff6699;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    pre {
+      background: black;
+      padding: 15px;
+      border-radius: 10px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>B站剧集批量重命名工具</h1>
+
+  <div class="card">
+    <label>本地视频文件夹路径（完整路径）</label>
+    <input type="text" id="folderPath" placeholder="例如 /Users/yang/Downloads/长安的荔枝">
+
+    <label>B站任意剧集链接（ep链接）</label>
+    <input type="text" id="biliUrl" placeholder="例如 https://www.bilibili.com/bangumi/play/ep473314">
+
+    <button id="renameBtn">开始批量重命名</button>
+
+    <pre id="result">等待操作...</pre>
+  </div>
+
+  <script>
+    const renameBtn = document.getElementById('renameBtn');
+    const resultBox = document.getElementById('result');
+
+    renameBtn.addEventListener('click', async () => {
+      const folderPath = document.getElementById('folderPath').value.trim();
+      const biliUrl = document.getElementById('biliUrl').value.trim();
+
+      if (!folderPath || !biliUrl) {
+        alert('请填写完整信息');
+        return;
+      }
+
+      resultBox.textContent = '处理中，请稍候...';
+
+      try {
+        const res = await fetch('/api/rename', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            folderPath,
+            biliUrl
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || '处理失败');
+        }
+
+        resultBox.textContent = JSON.stringify(data, null, 2);
+
+      } catch (err) {
+        resultBox.textContent = `错误：${err.message}`;
+      }
+    });
+  </script>
+</body>
+
+</html>

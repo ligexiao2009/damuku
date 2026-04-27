@@ -4,168 +4,739 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>B站弹幕播放器 - 全屏修复版</title>
+  <title>B站弹幕播放器 - 极致丝滑优化版</title>
   <style>
-    body { background: #111; color: white; font-family: Arial, sans-serif; padding: 20px; }
-    .controls { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
-    input, button { padding: 10px; border: none; border-radius: 8px; }
-    button { background: #ff6699; color: white; cursor: pointer; font-weight: bold; }
-
-    /* 播放器容器 */
-    .player-container {
-      position: relative;
-      max-width: 960px;
-      margin: auto;
-      overflow: hidden;
-      background: black;
+    :root {
+      --bg: #0c1017;
+      --panel: rgba(12, 18, 28, 0.82);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --panel-soft: rgba(255, 255, 255, 0.06);
+      --text: #f6f7fb;
+      --muted: #a8b0c2;
+      --accent: #ff6b8a;
+      --accent-strong: #ff4d73;
+      --accent-soft: rgba(255, 107, 138, 0.16);
+      --shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+      --radius: 20px;
     }
 
-    /* 关键：全屏状态下容器的样式 */
-    .player-container:fullscreen {
-      width: 100vw;
-      height: 100vh;
-      max-width: none;
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(255, 107, 138, 0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(67, 181, 255, 0.16), transparent 24%),
+        linear-gradient(180deg, #0c1017 0%, #141d29 100%);
+      color: var(--text);
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      padding: 20px 16px 24px;
+    }
+
+    .page { width: min(1320px, 100%); margin: 0 auto; }
+    .workspace { display: grid; gap: 12px; }
+
+    .status-bar {
       display: flex;
-      align-items: center; /* 视频垂直居中 */
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
     }
 
-    video {
-      width: 100%;
-      display: block;
+    .status-bar.hidden {
+      display: none;
     }
 
+    .status-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1;
+      min-height: 26px;
+    }
+
+    .status-item strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(145px, 0.9fr) minmax(120px, 0.65fr) 88px 98px 98px 82px 112px minmax(360px, 1.6fr);
+      gap: 6px;
+      padding: 8px;
+      border-radius: 14px;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      align-items: stretch;
+    }
+
+    input, button, select { border: none; border-radius: 10px; min-height: 34px; }
+    
+    input[type="text"], input[type="file"], select {
+      width: 100%; min-width: 0; padding: 0 10px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text); border: 1px solid rgba(255, 255, 255, 0.08);
+      outline: none; font-size: 12px;
+    }
+    input[type="text"]:focus, input[type="file"]:focus, select:focus {
+      border-color: rgba(255, 107, 138, 0.5);
+      box-shadow: 0 0 0 3px rgba(255, 107, 138, 0.14);
+    }
+    select { cursor: pointer; appearance: none; }
+    input[type="file"] { padding: 4px 6px; }
+    input[type="file"]::file-selector-button {
+      margin-right: 6px; border: none; border-radius: 8px;
+      padding: 5px 8px; background: rgba(255, 255, 255, 0.1);
+      color: var(--text); cursor: pointer; font-size: 12px;
+    }
+
+    button {
+      padding: 0 12px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      color: white; cursor: pointer; font-size: 12px; font-weight: 700;
+      box-shadow: 0 10px 24px rgba(255, 77, 115, 0.25);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+    }
+    button:hover {
+      transform: translateY(-1px); filter: brightness(1.04);
+      box-shadow: 0 14px 28px rgba(255, 77, 115, 0.32);
+    }
+    button:active { transform: translateY(0); }
+    #fullScreenBtn { background: linear-gradient(135deg, #293549 0%, #1b2433 100%); box-shadow: none; }
+
+    .settings-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+      gap: 4px;
+      min-width: 0;
+    }
+    .setting-group {
+      display: grid; grid-template-columns: 30px minmax(0, 1fr) 28px; align-items: center; gap: 4px; min-height: 30px;
+      background: var(--panel-soft); padding: 4px 6px;
+      border-radius: 9px; border: 1px solid rgba(255, 255, 255, 0.06);
+      min-width: 0;
+    }
+    .setting-group label { width: auto; min-width: 0; font-size: 9px; color: var(--muted); white-space: nowrap; }
+    .setting-group input[type="range"] { min-width: 0; padding: 0; width: 100%; accent-color: var(--accent); }
+    .setting-value { min-width: 0; font-size: 9px; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+
+    .player-container {
+      position: relative; width: 100%; max-width: 100%; overflow: hidden;
+      background: #000; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: var(--shadow); margin: 0 auto;
+    }
+    .player-container:fullscreen {
+      width: 100vw; height: 100vh; max-width: none;
+      display: flex; align-items: center; border-radius: 0; border: none;
+    }
+    video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+
+    /* 优化点1：彻底隔离渲染树，防止弹幕影响外面布局 */
     #danmaku-layer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      overflow: hidden;
-      z-index: 999; /* 确保在视频上方 */
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; overflow: hidden; z-index: 999;
+      contain: layout style paint; 
     }
 
+    /* 优化点2：废弃 left/top 定位，只使用 transform GPU 加速计算，默认藏在屏幕外 */
     .danmu {
-      position: absolute;
-      left: 100%; 
-      white-space: nowrap;
-      font-weight: bold;
-      text-shadow: 1px 1px 2px black, 0 0 2px black; 
-      animation: moveLeft linear forwards;
-      will-change: transform; /* 优化全屏下的性能 */
+      position: absolute; left: 0; top: 0;
+      transform: translate3d(-9999px, -9999px, 0); 
+      white-space: nowrap; font-weight: bold;
+      text-shadow: 1px 1px 2px black, 0 0 2px black;
+      backface-visibility: hidden; will-change: transform;
+      contain: layout style paint; 
     }
 
-    @keyframes moveLeft {
-      from { transform: translateX(0); }
-      to { transform: translateX(-200vw); } /* 增加距离确保全屏也能滑出 */
+    @media (max-width: 980px) {
+      .controls { grid-template-columns: 1fr 1fr; }
+      .settings-row { grid-column: 1 / -1; }
+    }
+    @media (max-width: 720px) {
+      body { padding: 16px 12px 22px; }
+      .controls { grid-template-columns: 1fr; padding: 12px; }
+      .settings-row { grid-template-columns: 1fr; }
+      .player-container { border-radius: 18px; }
     }
   </style>
 </head>
 
 <body>
-  <h1>B站弹幕本地播放器</h1>
+  <main class="page">
+    <section class="workspace">
+      <div class="controls">
+        <input type="file" id="videoFile" accept="video/*">
+        <input type="text" id="bvidInput" placeholder="输入BV号或ep号">
+        <select id="strategySelect" title="弹幕获取策略">
+          <option value="xml">XML</option>
+          <option value="seg.so" selected>seg.so</option>
+        </select>
+        <button id="loadDanmu">加载弹幕</button>
+        <button id="refreshDanmuBtn">刷新弹幕</button>
+        <button id="toggleStatusBtn">状态栏</button>
+        <button id="fullScreenBtn">全屏播放</button>
+        <div class="settings-row">
+          <div class="setting-group">
+            <label for="speedControl">弹幕速度</label>
+            <input type="range" id="speedControl" min="8" max="40" value="20" step="1">
+            <span class="setting-value" id="speedValue">20秒</span>
+          </div>
+          <div class="setting-group">
+            <label for="areaControl">显示区域</label>
+            <input type="range" id="areaControl" min="10" max="100" value="25" step="5">
+            <span class="setting-value" id="areaValue">25%</span>
+          </div>
+          <div class="setting-group">
+            <label for="offsetControl">弹幕偏移</label>
+            <input type="range" id="offsetControl" min="-10" max="10" value="0" step="0.5">
+            <span class="setting-value" id="offsetValue">0秒</span>
+          </div>
+        </div>
+      </div>
 
-  <div class="controls">
-    <input type="file" id="videoFile" accept="video/*">
-    <input type="text" id="bvidInput" placeholder="输入BV号">
-    <button id="loadDanmu">加载弹幕</button>
-    <button id="fullScreenBtn">全屏播放</button>
-  </div>
+      <div class="status-bar" id="statusBar">
+        <div class="status-item">策略 <strong id="statusStrategy">seg.so</strong></div>
+        <div class="status-item">条数 <strong id="statusCount">0</strong></div>
+        <div class="status-item">缓存 <strong id="statusCache">未加载</strong></div>
+        <div class="status-item">刷新 <strong id="statusRefresh">否</strong></div>
+        <div class="status-item">偏移 <strong id="statusOffset">0秒</strong></div>
+        <div class="status-item">视频时间 <strong id="statusVideoTime">00:00</strong></div>
+        <div class="status-item">弹幕判定 <strong id="statusTriggerTime">00:00</strong></div>
+        <div class="status-item">文件 <strong id="statusFile">未选择</strong></div>
+      </div>
 
-  <div class="player-container" id="player">
-    <video id="video" controls></video>
-    <div id="danmaku-layer"></div>
-  </div>
+      <div class="player-container" id="player">
+        <video id="video" controls controlslist="nofullscreen noremoteplayback"></video>
+        <div id="danmaku-layer"></div>
+      </div>
+    </section>
+  </main>
 
   <script>
     const video = document.getElementById('video');
     const player = document.getElementById('player');
     const videoFile = document.getElementById('videoFile');
     const loadDanmuBtn = document.getElementById('loadDanmu');
+    const refreshDanmuBtn = document.getElementById('refreshDanmuBtn');
+    const toggleStatusBtn = document.getElementById('toggleStatusBtn');
     const fullScreenBtn = document.getElementById('fullScreenBtn');
     const bvidInput = document.getElementById('bvidInput');
+    const strategySelect = document.getElementById('strategySelect');
     const danmakuLayer = document.getElementById('danmaku-layer');
+    const speedControl = document.getElementById('speedControl');
+    const areaControl = document.getElementById('areaControl');
+    const offsetControl = document.getElementById('offsetControl');
+    const speedValue = document.getElementById('speedValue');
+    const areaValue = document.getElementById('areaValue');
+    const offsetValue = document.getElementById('offsetValue');
+    const statusStrategy = document.getElementById('statusStrategy');
+    const statusCount = document.getElementById('statusCount');
+    const statusCache = document.getElementById('statusCache');
+    const statusRefresh = document.getElementById('statusRefresh');
+    const statusOffset = document.getElementById('statusOffset');
+    const statusVideoTime = document.getElementById('statusVideoTime');
+    const statusTriggerTime = document.getElementById('statusTriggerTime');
+    const statusFile = document.getElementById('statusFile');
+    const statusBar = document.getElementById('statusBar');
+    const playbackMemoryKey = 'b-video-playback-memory';
+    const danmuSettingsKey = 'b-video-danmu-settings';
+    const statusBarVisibleKey = 'b-video-status-bar-visible';
 
     let danmus = [];
     let danmuIndex = 0;
+    let danmuDuration = Number(speedControl.value);
+    let danmuAreaRatio = Number(areaControl.value) / 100;
+    let danmuOffset = Number(offsetControl.value);
+    let currentVideoMemoryId = '';
+    let pendingResumeTime = null;
+    let currentVideoName = '未选择';
+    
+    // 性能优化全局变量缓存
+    let layerW = 0; 
+    let layerH = 0;
+    const danmuPool = []; // DOM 对象池，防止GC卡顿
+    const danmuMeasureCanvas = document.createElement('canvas');
+    const danmuMeasureContext = danmuMeasureCanvas.getContext('2d');
+    const danmuWidthCache = new Map();
+    
+    let laneAvailableAt = [];
+    const laneGap = 24;
+    let danmuLoopId = 0;
+    const maxDanmuPerFrame = 6;
 
-    // 1. 全屏功能修复：请求容器全屏而非 video 全屏
+    // 优化点3：时间插值算法，弥补 video.currentTime 刷新过慢的毛病
+    let lastVideoTime = 0;
+    let lastPerfTime = 0;
+
+    function readPlaybackMemory() {
+      try {
+        return JSON.parse(localStorage.getItem(playbackMemoryKey) || '{}');
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function writePlaybackMemory(memory) {
+      localStorage.setItem(playbackMemoryKey, JSON.stringify(memory));
+    }
+
+    function readDanmuSettings() {
+      try {
+        return JSON.parse(localStorage.getItem(danmuSettingsKey) || '{}');
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function writeDanmuSettings(settings) {
+      localStorage.setItem(danmuSettingsKey, JSON.stringify(settings));
+    }
+
+    function readStatusBarVisible() {
+      const saved = localStorage.getItem(statusBarVisibleKey);
+      return saved == null ? true : saved === '1';
+    }
+
+    function setStatusBarVisible(visible) {
+      statusBar.classList.toggle('hidden', !visible);
+      toggleStatusBtn.textContent = visible ? '隐藏状态' : '显示状态';
+      localStorage.setItem(statusBarVisibleKey, visible ? '1' : '0');
+    }
+
+    function formatClock(seconds) {
+      if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
+      const totalSeconds = Math.floor(seconds);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const secs = totalSeconds % 60;
+      if (hours > 0) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+      return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function formatDanmuTime(seconds) {
+      if (!Number.isFinite(seconds) || seconds < 0) return '00:00.0';
+      const safeSeconds = Math.max(0, seconds);
+      const base = formatClock(safeSeconds);
+      const tenth = Math.floor((safeSeconds % 1) * 10);
+      return `${base}.${tenth}`;
+    }
+
+    function getDanmuDisplayText(danmu) {
+      if (statusBar.classList.contains('hidden')) {
+        return danmu.text;
+      }
+      return `[${formatDanmuTime(danmu.time)}] ${danmu.text}`;
+    }
+
+    function updatePlaybackStatus(currentTime = video.currentTime) {
+      const safeCurrentTime = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
+      const triggerTime = Math.max(0, safeCurrentTime + danmuOffset);
+      statusVideoTime.textContent = formatClock(safeCurrentTime);
+      statusTriggerTime.textContent = formatClock(triggerTime);
+    }
+
+    function applySavedDanmuSettings() {
+      const settings = readDanmuSettings();
+      if (Number.isFinite(Number(settings.speed))) {
+        speedControl.value = String(settings.speed);
+      }
+      if (Number.isFinite(Number(settings.area))) {
+        areaControl.value = String(settings.area);
+      }
+      if (Number.isFinite(Number(settings.offset))) {
+        offsetControl.value = String(settings.offset);
+      }
+    }
+
+    function buildVideoMemoryId(file) {
+      return [file.name, file.size, file.lastModified].join('__');
+    }
+
+    function getSavedPlaybackTime(memoryId) {
+      if (!memoryId) return null;
+      const memory = readPlaybackMemory();
+      const savedTime = Number(memory[memoryId]);
+      return Number.isFinite(savedTime) && savedTime > 0 ? savedTime : null;
+    }
+
+    function saveCurrentPlaybackTime(force = false) {
+      if (!currentVideoMemoryId || !video.duration || !Number.isFinite(video.currentTime)) return;
+
+      const currentTime = video.currentTime;
+      const safeTime = force
+        ? Math.min(currentTime, Math.max(0, video.duration - 1))
+        : currentTime;
+
+      const memory = readPlaybackMemory();
+      if (video.ended || safeTime >= video.duration - 1) {
+        delete memory[currentVideoMemoryId];
+      } else {
+        memory[currentVideoMemoryId] = Number(safeTime.toFixed(2));
+      }
+      writePlaybackMemory(memory);
+    }
+
+    function updateStatusBar({ count, fromCache, forceRefresh, fileName } = {}) {
+      statusStrategy.textContent = strategySelect.value;
+      statusCount.textContent = String(count ?? danmus.length ?? 0);
+      statusCache.textContent = fromCache == null ? '未加载' : (fromCache ? '命中' : '重拉');
+      statusRefresh.textContent = forceRefresh ? '是' : '否';
+      statusOffset.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
+      updatePlaybackStatus();
+      if (fileName) {
+        currentVideoName = fileName;
+      }
+      statusFile.textContent = currentVideoName;
+    }
+
+    function updateDanmuSettings() {
+      danmuDuration = Number(speedControl.value);
+      danmuAreaRatio = Number(areaControl.value) / 100;
+      danmuOffset = Number(offsetControl.value);
+      speedValue.textContent = `${danmuDuration}秒`;
+      areaValue.textContent = `${areaControl.value}%`;
+      offsetValue.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
+      writeDanmuSettings({
+        speed: danmuDuration,
+        area: Number(areaControl.value),
+        offset: danmuOffset
+      });
+      laneAvailableAt = [];
+      updateStatusBar();
+    }
+
+    function updatePlayerSize() {
+      if (!document.fullscreenElement) {
+        const containerWidth = player.parentElement.clientWidth;
+        const playerTop = player.getBoundingClientRect().top;
+        const availableHeight = Math.max(220, window.innerHeight - playerTop - 24);
+        const ratio = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
+
+        let width = containerWidth;
+        let height = width / ratio;
+
+        if (height > availableHeight) {
+          height = availableHeight;
+          width = height * ratio;
+        }
+
+        player.style.width = `${Math.max(220, Math.min(width, containerWidth))}px`;
+        player.style.height = `${Math.max(180, height)}px`;
+      }
+
+      // 优化点4：缓存容器宽高，绝不在高频循环中调用 clientWidth (防止触发强制回流 Layout Thrashing)
+      requestAnimationFrame(() => {
+        layerW = danmakuLayer.clientWidth;
+        layerH = danmakuLayer.clientHeight;
+      });
+    }
+
+    function measureDanmuWidth(text, fontSize) {
+      const cacheKey = `${fontSize}:${text}`;
+      if (danmuWidthCache.has(cacheKey)) return danmuWidthCache.get(cacheKey);
+      danmuMeasureContext.font = `bold ${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+      const width = Math.ceil(danmuMeasureContext.measureText(text).width);
+      danmuWidthCache.set(cacheKey, width);
+      return width;
+    }
+
+    // 从对象池获取 DOM 元素，杜绝无休止的 Create 和 Remove
+    function getDanmuDom() {
+      if (danmuPool.length > 0) return danmuPool.pop();
+      const el = document.createElement('div');
+      el.className = 'danmu';
+      danmakuLayer.appendChild(el); // 仅在创建时插入 DOM
+      return el;
+    }
+
+    function clearDanmu() {
+      danmakuLayer.innerHTML = '';
+      danmuPool.length = 0; 
+      laneAvailableAt = [];
+    }
+
+    function sendDanmu(danmu) {
+      if (!layerW || !layerH) return false; // 使用缓存好的宽高
+
+      const fontSize = 24;
+      const displayText = getDanmuDisplayText(danmu);
+      const danmuWidth = measureDanmuWidth(displayText, fontSize);
+      
+      const availableHeight = Math.max(fontSize, layerH * danmuAreaRatio);
+      const laneHeight = fontSize + 8;
+      const laneCount = Math.max(1, Math.floor(availableHeight / laneHeight));
+
+      if (laneAvailableAt.length !== laneCount) {
+        laneAvailableAt = Array(laneCount).fill(0);
+      }
+
+      const now = performance.now();
+      let earliestLaneIndex = 0;
+      let earliestTime = laneAvailableAt[0] || 0;
+
+      // 找赛道
+      for (let i = 0; i < laneAvailableAt.length; i++) {
+        if ((laneAvailableAt[i] || 0) <= now) {
+          earliestLaneIndex = i;
+          break;
+        }
+        if ((laneAvailableAt[i] || 0) < earliestTime) {
+          earliestTime = laneAvailableAt[i];
+          earliestLaneIndex = i;
+        }
+      }
+
+      if ((laneAvailableAt[earliestLaneIndex] || 0) > now) {
+        return false;
+      }
+
+      const el = getDanmuDom();
+      el.textContent = displayText;
+      el.style.color = danmu.color || '#ffffff';
+      el.style.fontSize = fontSize + 'px';
+
+      const y = earliestLaneIndex * laneHeight; // 不使用 CSS Top，全部交给 GPU 算 Transform
+      const travelDistance = layerW + danmuWidth;
+      const speedPxPerSecond = travelDistance / danmuDuration;
+      const waitSeconds = (danmuWidth + laneGap) / speedPxPerSecond;
+      laneAvailableAt[earliestLaneIndex] = now + waitSeconds * 1000;
+
+      // 纯 Transform 动画，将 X 轴和 Y 轴合成在一起
+      const animation = el.animate([
+        { transform: `translate3d(${layerW}px, ${y}px, 0)` },
+        { transform: `translate3d(-${danmuWidth}px, ${y}px, 0)` }
+      ], {
+        duration: danmuDuration * 1000,
+        easing: 'linear'
+      });
+
+      // 动画结束，不删除 DOM，丢回对象池重复利用
+      animation.onfinish = () => danmuPool.push(el);
+      return true;
+    }
+
+    function flushDanmuQueue(currentTime) {
+      let emittedCount = 0;
+      const triggerTime = currentTime + danmuOffset;
+
+      while (danmuIndex < danmus.length && danmus[danmuIndex].time <= triggerTime) {
+        if (emittedCount >= maxDanmuPerFrame) {
+          danmuIndex++;
+          continue;
+        }
+
+        if (sendDanmu(danmus[danmuIndex])) {
+          emittedCount++;
+        }
+        danmuIndex++;
+      }
+    }
+
+    function stopDanmuLoop() {
+      if (danmuLoopId) {
+        cancelAnimationFrame(danmuLoopId);
+        danmuLoopId = 0;
+      }
+    }
+
+    function startDanmuLoop() {
+      stopDanmuLoop();
+      lastVideoTime = video.currentTime;
+      lastPerfTime = performance.now();
+
+      const tick = (now) => {
+        if (video.paused || video.ended) {
+          danmuLoopId = 0;
+          return;
+        }
+
+        // 使用高精度时钟对 currentTime 进行平滑插值，避免弹幕发射扎堆
+        let interpolatedTime = video.currentTime;
+        if (video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+          lastPerfTime = now;
+        } else {
+          interpolatedTime = lastVideoTime + (now - lastPerfTime) / 1000;
+        }
+
+        flushDanmuQueue(interpolatedTime);
+        updatePlaybackStatus(interpolatedTime);
+        danmuLoopId = requestAnimationFrame(tick);
+      };
+
+      danmuLoopId = requestAnimationFrame(tick);
+    }
+
+    applySavedDanmuSettings();
+    updateDanmuSettings();
+    updatePlayerSize();
+    updateStatusBar();
+    setStatusBarVisible(readStatusBarVisible());
+
+    speedControl.addEventListener('input', updateDanmuSettings);
+    areaControl.addEventListener('input', updateDanmuSettings);
+    offsetControl.addEventListener('input', updateDanmuSettings);
+    window.addEventListener('resize', updatePlayerSize);
+    document.addEventListener('fullscreenchange', updatePlayerSize);
+
     fullScreenBtn.addEventListener('click', () => {
       if (!document.fullscreenElement) {
-        player.requestFullscreen().catch(err => {
-          alert(`全屏失败: ${err.message}`);
-        });
+        player.requestFullscreen().catch(err => alert(`全屏失败: ${err.message}`));
       } else {
         document.exitFullscreen();
       }
     });
 
-    videoFile.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (file) {
-        video.src = URL.createObjectURL(file);
-        danmuIndex = 0;
-        danmakuLayer.innerHTML = '';
+    player.addEventListener('dblclick', () => {
+      if (!document.fullscreenElement) {
+        player.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
       }
     });
 
-    async function loadDanmu(bvid) {
+    player.addEventListener('click', event => {
+      if (event.target !== video && event.target !== danmakuLayer && !video.contains(event.target)) {
+        return;
+      }
+
+      if (!video.src) return;
+
+      const controlsHeight = 48;
+      const rect = video.getBoundingClientRect();
+      const clickFromBottom = rect.bottom - event.clientY;
+      if (clickFromBottom <= controlsHeight) return;
+
+      if (video.paused) {
+        video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+    });
+
+    async function applyDanmuForVideoId(videoId, { showAlert = true, forceRefresh = false } = {}) {
+      if (!videoId) {
+        if (showAlert) alert('请输入BV号或ep号');
+        return false;
+      }
+
       try {
-        const res = await fetch(`/api/danmu?id=${bvid}`);
+        const params = new URLSearchParams({
+          id: videoId,
+          strategy: strategySelect.value
+        });
+        if (forceRefresh) {
+          params.set('refresh', '1');
+        }
+        const res = await fetch(`/api/danmu?${params.toString()}`);
         const data = await res.json();
-        return data.danmus;
+        danmus = data.danmus.sort((a, b) => a.time - b.time);
+        updateStatusBar({
+          count: data.count,
+          fromCache: data.fromCache,
+          forceRefresh: data.forceRefresh
+        });
       } catch (error) {
-        console.warn('使用模拟数据...');
-        return Array.from({ length: 50 }, (_, i) => ({
-          text: `全屏测试弹幕 ${i + 1}`,
-          time: i * 1,
+        // 造一些超密集的假数据测试性能
+        danmus = Array.from({ length: 800 }, (_, i) => ({
+          text: `性能压测弹幕 ${i + 1} 性能压测弹幕`,
+          time: i * 0.1, // 每 0.1 秒发一条
           color: i % 2 === 0 ? '#ffffff' : '#ff6699'
         }));
+        updateStatusBar({
+          count: danmus.length,
+          fromCache: false,
+          forceRefresh
+        });
       }
+
+      danmuIndex = 0;
+      clearDanmu();
+      if (showAlert) alert(`已加载 ${danmus.length} 条弹幕`);
+      return true;
     }
 
-    function sendDanmu(danmu) {
-      const el = document.createElement('div');
-      el.className = 'danmu';
-      el.textContent = danmu.text;
-      el.style.color = danmu.color || '#ffffff';
-      
-      const fontSize = 24;
-      el.style.fontSize = fontSize + 'px';
-      
-      // 依然保持在 1/4 处
-      const maxTop = (danmakuLayer.clientHeight * 0.25) - fontSize; 
-      el.style.top = Math.max(0, Math.random() * maxTop) + 'px';
-      
-      el.style.animationDuration = '30s';
-      danmakuLayer.appendChild(el);
-      el.addEventListener('animationend', () => el.remove());
-    }
+    videoFile.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) {
+        updateStatusBar({ fileName: file.name });
+        saveCurrentPlaybackTime(true);
+        currentVideoMemoryId = buildVideoMemoryId(file);
+        pendingResumeTime = getSavedPlaybackTime(currentVideoMemoryId);
+        video.addEventListener('canplay', () => {
+          video.play().catch(() => {});
+        }, { once: true });
+        video.src = URL.createObjectURL(file);
+        updatePlayerSize();
+        danmuIndex = 0;
+        clearDanmu();
+        stopDanmuLoop();
 
-    video.addEventListener('timeupdate', () => {
-      const currentTime = video.currentTime;
-      while (danmuIndex < danmus.length && danmus[danmuIndex].time <= currentTime) {
-        if (currentTime - danmus[danmuIndex].time < 1.5) {
-          sendDanmu(danmus[danmuIndex]);
+        const autoVideoId = file.name.replace(/\.[^.]+$/, '').split('_').pop()?.match(/(BV[0-9A-Za-z]+|ep\d+)/i)?.[0];
+        if (autoVideoId) {
+          bvidInput.value = autoVideoId;
+          applyDanmuForVideoId(autoVideoId, { showAlert: false });
         }
-        danmuIndex++;
       }
+    });
+
+    video.addEventListener('loadedmetadata', () => {
+      updatePlayerSize();
+      updatePlaybackStatus();
+      if (pendingResumeTime != null) {
+        video.currentTime = Math.min(pendingResumeTime, Math.max(0, video.duration - 1));
+        pendingResumeTime = null;
+      }
+    });
+    video.addEventListener('play', startDanmuLoop);
+    video.addEventListener('pause', () => {
+      stopDanmuLoop();
+      saveCurrentPlaybackTime(true);
+    });
+    video.addEventListener('ended', () => {
+      stopDanmuLoop();
+      saveCurrentPlaybackTime(true);
+      updatePlaybackStatus();
+    });
+    video.addEventListener('timeupdate', () => {
+      saveCurrentPlaybackTime();
+      updatePlaybackStatus();
     });
 
     video.addEventListener('seeked', () => {
       danmuIndex = danmus.findIndex(d => d.time >= video.currentTime);
       if (danmuIndex === -1) danmuIndex = danmus.length;
-      danmakuLayer.innerHTML = ''; 
+      clearDanmu();
+      lastVideoTime = video.currentTime;
+      lastPerfTime = performance.now();
+      updatePlaybackStatus();
+      if (!video.paused) startDanmuLoop();
     });
 
-    loadDanmuBtn.addEventListener('click', async () => {
-      const bvid = bvidInput.value.trim();
-      if (!bvid) return alert('请输入BV号');
-      const raw = await loadDanmu(bvid);
-      danmus = raw.sort((a, b) => a.time - b.time);
-      danmuIndex = 0;
-      alert(`已加载 ${danmus.length} 条弹幕`);
+    loadDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim()));
+    refreshDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim(), {
+      forceRefresh: true
+    }));
+    toggleStatusBtn.addEventListener('click', () => {
+      setStatusBarVisible(statusBar.classList.contains('hidden'));
     });
+    window.addEventListener('beforeunload', () => saveCurrentPlaybackTime(true));
   </script>
 </body>
 </html>
