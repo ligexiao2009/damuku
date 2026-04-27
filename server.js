@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const os = require("os");
 const { XMLParser } = require('fast-xml-parser');
 const protobuf = require('protobufjs');
 require('dotenv').config();
@@ -213,47 +214,107 @@ app.get('/video/:name', (req, res) => {
 });
 
 // ============== 视频流媒体分段接口 ==============
-app.get('/stream', (req, res) => {
-    const fileName = req.query.name; // 获取参数中的文件名
-    if (!fileName) return res.status(400).send("缺少文件名参数");
+const { spawn } = require('child_process');
+const mime = require('mime-types');
 
-    // 拼装文件绝对路径，假设视频就在 server.js 同级目录
+app.get('/stream', (req, res) => {
+    const fileName = req.query.name;
+    if (!fileName) return res.status(400).send('缺少文件名');
+
     const videoPath = path.join(VIDEO_DIR, fileName);
 
     if (!fs.existsSync(videoPath)) {
-        console.error(`文件未找到: ${videoPath}`);
-        return res.status(404).send("视频文件不存在");
+        return res.status(404).send('文件不存在');
     }
 
+    const ext = path.extname(videoPath).toLowerCase();
+
+    // 原生兼容格式直接播放
+    if (ext === '.mp4') {
+        return streamDirect(videoPath, req, res);
+    }
+
+    // 非兼容格式实时转码
+    // res.writeHead(200, {
+    //     'Content-Type': 'video/mp4',
+    //     'Transfer-Encoding': 'chunked',
+    //     'Accept-Ranges': 'none'
+    // });
+
+    // const ffmpeg = spawn('ffmpeg', [
+    //     '-i', videoPath,
+    //     '-c:v', 'libx264',
+    //     '-preset', 'ultrafast',
+    //     '-crf', '23',
+    //     '-c:a', 'aac',
+    //     '-b:a', '128k',
+    //     '-movflags', 'frag_keyframe+empty_moov',
+    //     '-f', 'mp4',
+    //     'pipe:1'
+    // ]);
+
+    // ffmpeg.stdout.pipe(res);
+
+    // ffmpeg.stderr.on('data', data => {
+    //     console.log(data.toString());
+    // });
+
+    // ffmpeg.on('close', code => {
+    //     res.end();
+    // });
+
+    // req.on('close', () => {
+    //     ffmpeg.kill('SIGKILL');
+    // });
+});
+
+function streamDirect(videoPath, req, res) {
     const stat = fs.statSync(videoPath);
     const fileSize = stat.size;
     const range = req.headers.range;
 
-    // 特别针对 iPad/Safari 的 Range 请求处理
+    const ext = path.extname(videoPath).toLowerCase();
+
+    let contentType = 'video/mp4';
+
+    if (ext === '.webm') contentType = 'video/webm';
+    else if (ext === '.mov') contentType = 'video/quicktime';
+
     if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
+        const parts = range.replace(/bytes=/, '').split('-');
         const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunksize = (end - start) + 1;
-        const file = fs.createReadStream(videoPath, { start, end });
-        const head = {
+        const end = parts[1]
+            ? parseInt(parts[1], 10)
+            : fileSize - 1;
+
+        const chunkSize = (end - start) + 1;
+
+        const fileStream = fs.createReadStream(videoPath, {
+            start,
+            end
+        });
+
+        const headers = {
             'Content-Range': `bytes ${start}-${end}/${fileSize}`,
             'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize,
-            'Content-Type': 'video/mp4',
+            'Content-Length': chunkSize,
+            'Content-Type': contentType,
         };
-        res.writeHead(206, head);
-        file.pipe(res);
+
+        res.writeHead(206, headers);
+        fileStream.pipe(res);
+
     } else {
-        const head = {
+        const headers = {
             'Content-Length': fileSize,
-            'Content-Type': 'video/mp4',
+            'Content-Type': contentType,
+            'Accept-Ranges': 'bytes'
         };
-        res.writeHead(200, head);
+
+        res.writeHead(200, headers);
         fs.createReadStream(videoPath).pipe(res);
     }
-});
-
+}
 
 // ============== 视频流媒体分段接口结束 ==============
 
@@ -290,8 +351,186 @@ app.get('/api/progress', (req, res) => {
     res.json(JSON.parse(fs.readFileSync(file, 'utf-8')));
 });
 
+app.post('/api/rename', async (req, res) => {
+    try {
+        const { folderPath, biliUrl } = req.body || {};
+
+        if (!folderPath || !biliUrl) {
+            return res.status(400).json({
+                error: '缺少文件夹路径或B站链接'
+            });
+        }
+
+        if (!fs.existsSync(folderPath)) {
+            return res.status(400).json({
+                error: '文件夹不存在'
+            });
+        }
+
+        const epId = extractEpId(biliUrl);
+
+        if (!epId) {
+            return res.status(400).json({
+                error: '无法识别EP号'
+            });
+        }
+
+        const season = await fetchSeasonInfo(epId);
+        const seasonTitle = sanitizeFileName(season.title);
+        const episodes = (season.episodes || []).slice().sort((a, b) => {
+            return Number(a?.title || 0) - Number(b?.title || 0);
+        });
+
+        const videoFiles = fs.readdirSync(folderPath)
+            .filter(file => /\.(mp4|mkv|avi|mov)$/i.test(file))
+            .sort();
+
+        if (videoFiles.length === 0) {
+            return res.status(400).json({
+                error: '文件夹内没有视频文件'
+            });
+        }
+
+        const renamedFiles = [];
+        const usedEpisodeIds = new Set();
+
+        videoFiles.forEach((file, index) => {
+            const detectedEpisodeNumber = extractEpisodeNumberFromFileName(file);
+            let ep = null;
+
+            if (detectedEpisodeNumber != null) {
+                ep = episodes.find(item => Number(item?.title || 0) === detectedEpisodeNumber);
+            }
+
+            if (!ep) {
+                ep = episodes[index];
+            }
+
+            if (!ep || usedEpisodeIds.has(ep.id)) return;
+
+            const ext = path.extname(file);
+            const episodeNumber = String(
+                detectedEpisodeNumber != null ? detectedEpisodeNumber : Number(ep.title || index + 1)
+            ).padStart(2, '0');
+
+            const newName = `EP${episodeNumber}_${seasonTitle}_ep${ep.id}${ext}`;
+
+            const oldPath = path.join(folderPath, file);
+            const newPath = path.join(folderPath, newName);
+
+            fs.renameSync(oldPath, newPath);
+            usedEpisodeIds.add(ep.id);
+
+            renamedFiles.push({
+                oldName: file,
+                newName,
+                matchedEpisode: Number(ep.title || episodeNumber),
+                matchedEpId: ep.id
+            });
+        });
+
+        const mappingPath = path.join(folderPath, 'mapping.json');
+
+        fs.writeFileSync(
+            mappingPath,
+            JSON.stringify(renamedFiles, null, 2)
+        );
+
+        res.json({
+            success: true,
+            seasonTitle,
+            totalFiles: renamedFiles.length,
+            renamedFiles
+        });
+
+    } catch (err) {
+        console.error(err);
+
+        res.status(500).json({
+            error: err.message || '重命名失败'
+        });
+    }
+});
+
+function extractEpId(input) {
+    const match = input.match(/ep(\d+)/i);
+    if (match) return match[1];
+
+    if (/^\d+$/.test(input.trim())) {
+        return input.trim();
+    }
+
+    return null;
+}
+
+function sanitizeFileName(name) {
+    return name
+        .replace(/[\\/:*?"<>|]/g, '')
+        .replace(/\s+/g, '_')
+        .trim();
+}
+
+function extractEpisodeNumberFromFileName(fileName) {
+    const baseName = path.basename(fileName, path.extname(fileName));
+    const patterns = [
+        /S\d+E(\d{1,3})/i,
+        /(?:^|[\s._-])EP?(\d{1,3})(?=$|[\s._-])/i,
+        /第\s*(\d{1,3})\s*[集话]/i
+    ];
+
+    for (const pattern of patterns) {
+        const match = baseName.match(pattern);
+        if (match) {
+            const episodeNumber = Number.parseInt(match[1], 10);
+            if (Number.isInteger(episodeNumber) && episodeNumber > 0) {
+                return episodeNumber;
+            }
+        }
+    }
+
+    return null;
+}
+
+async function fetchSeasonInfo(epId) {
+    const url = `https://api.bilibili.com/pgc/view/web/season?ep_id=${epId}`;
+
+    const res = await axios.get(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0'
+        }
+    });
+
+    if (!res.data.result) {
+        throw new Error('无法获取B站剧集信息');
+    }
+
+    return res.data.result;
+}
+
+
+
+
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+
+  for (const name of Object.keys(interfaces)) {
+    for (const net of interfaces[name]) {
+      if (
+        net.family === "IPv4" &&
+        !net.internal &&
+        net.address.startsWith("192.168.")
+      ) {
+        return net.address;
+      }
+    }
+  }
+
+  return "localhost";
+}
+
+const localIP = getLocalIP();
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`服务器已在局域网启动！`);
     console.log(`本机请访问: http://localhost:${PORT}/video.html`);
-    console.log(`iPad 请访问: http://192.168.0.120:${PORT}/video.html`);
+    console.log(`iPad访问: http://${localIP}:${PORT}/video.html`);
 });
