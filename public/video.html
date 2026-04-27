@@ -670,9 +670,20 @@
 
     function naturalSortFiles(files) {
       return [...files].sort((a, b) => {
-        const pathA = a.webkitRelativePath || a.name;
-        const pathB = b.webkitRelativePath || b.name;
-        return pathA.localeCompare(pathB, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+        const pathA =
+          typeof a === 'string'
+            ? a
+            : a.relativePath || a.webkitRelativePath || a.name;
+
+        const pathB =
+          typeof b === 'string'
+            ? b
+            : b.relativePath || b.webkitRelativePath || b.name;
+
+        return pathA.localeCompare(pathB, 'zh-Hans-CN', {
+          numeric: true,
+          sensitivity: 'base'
+        });
       });
     }
 

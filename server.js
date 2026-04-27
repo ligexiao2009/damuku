@@ -9,6 +9,7 @@ require('dotenv').config();
 const app = express();
 const PORT = 3000;
 const CACHE_DIR = path.join(__dirname, 'cache');
+const VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
 
 if (!fs.existsSync(CACHE_DIR)) {
     fs.mkdirSync(CACHE_DIR);
@@ -162,8 +163,8 @@ app.get('/api/danmu', async (req, res) => {
 
 app.get('/api/videos', (req, res) => {
     try {
-        console.log("__dirname" + __dirname)
-        const files = fs.readdirSync(__dirname);
+        console.log("__dirname:" + VIDEO_DIR)
+        const files = fs.readdirSync(VIDEO_DIR);
         // 过滤出视频文件
         const videoFiles = files.filter(f => /\.(mp4|mkv|mov|webm|avi)$/i.test(f));
         res.json(videoFiles);
@@ -174,7 +175,7 @@ app.get('/api/videos', (req, res) => {
 
 // 在 app.listen 之前添加这个接口
 app.get('/video/:name', (req, res) => {
-    const videoPath = path.join(__dirname, req.params.name); // 确保视频在 server.js 同级
+    const videoPath = path.join(VIDEO_DIR, req.params.name); // 确保视频在 server.js 同级
     if (!fs.existsSync(videoPath)) {
         return res.status(404).send('视频文件不存在');
     }
@@ -214,7 +215,7 @@ app.get('/stream', (req, res) => {
     if (!fileName) return res.status(400).send("缺少文件名参数");
 
     // 拼装文件绝对路径，假设视频就在 server.js 同级目录
-    const videoPath = path.join(__dirname, fileName);
+    const videoPath = path.join(VIDEO_DIR, fileName);
 
     if (!fs.existsSync(videoPath)) {
         console.error(`文件未找到: ${videoPath}`);
