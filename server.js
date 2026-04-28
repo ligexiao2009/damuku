@@ -478,7 +478,7 @@ app.get('/api/danmu', async (req, res) => {
           results[batch[j].index - 1] = r;
         });
         if (i + concurrency < segmentCount) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 10));
         }
       }
 
