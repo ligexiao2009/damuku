@@ -80,7 +80,6 @@
       font-weight: 700;
     }
 
-    /* 优化点：引入 flex 使控件排列更具弹性，适配新增按钮 */
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -196,7 +195,6 @@
       box-shadow: none;
     }
 
-    /* 为新按钮指定样式 */
     #loadServerFilesBtn {
       background: linear-gradient(135deg, #0078d7 0%, #005a9e 100%);
       box-shadow: none;
@@ -1158,7 +1156,7 @@
         relativePath: file.webkitRelativePath || file.name,
         videoId: detectVideoIdFromName(file.name),
         isRemote: false,
-        thumbnailUrl: placeholderLocalThumb
+        thumbnailUrl: `/api/thumbnail?name=${encodeURIComponent(file.name)}` // 修改：向后端请求缩略图
       }));
 
       currentPlaylistIndex = -1;
@@ -1191,7 +1189,7 @@
           relativePath: file.webkitRelativePath || file.name,
           videoId: detectVideoIdFromName(file.name),
           isRemote: false,
-          thumbnailUrl: placeholderLocalThumb
+          thumbnailUrl: `/api/thumbnail?name=${encodeURIComponent(file.name)}` // 修改：向后端请求缩略图
         }));
 
       if (!newItems.length) {

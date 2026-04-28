@@ -191,7 +191,7 @@ function getLocalIP() {
 }
 
 async function fetchVideoMetaByBvid(bvid) {
-    console.log('Fetching video metadata for BV ID:', bvid);
+  console.log('Fetching video metadata for BV ID:', bvid);
   const url = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`;
   const res = await axios.get(url, { headers: getRequestHeaders() });
 
@@ -367,11 +367,11 @@ function transcodeStream(videoPath, req, res) {
   req.on('close', () => {
     try {
       ffmpeg.kill('SIGKILL');
-    } catch {}
+    } catch { }
   });
 }
 
-async function generateThumbnail(videoPath, thumbPath) {
+async function generateLocalThumb(videoPath, thumbPath) {
   await new Promise((resolve, reject) => {
     const ffmpeg = spawn('ffmpeg', [
       '-y',
@@ -424,7 +424,7 @@ async function getLibraryItem(relativeName) {
         desc = meta.desc || desc;
         duration = meta.duration || duration;
       }
-    } catch {}
+    } catch { }
   } else if (videoId) {
     try {
       let meta = null;
@@ -530,79 +530,328 @@ app.get('/api/videos', (req, res) => {
   }
 });
 
-app.get('/api/library', async (req, res) => {
-  try {
-    const files = scanVideos(VIDEO_DIR).sort((a, b) =>
-      a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
-    );
+// app.get('/api/library', async (req, res) => {
+//   try {
+//     const files = scanVideos(VIDEO_DIR).sort((a, b) =>
+//       a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+//     );
 
-    const items = [];
-    for (const file of files) {
+//     const items = [];
+//     for (const file of files) {
+//       try {
+//         items.push(await getLibraryItem(file));
+//       } catch (err) {
+//         const videoPath = resolveVideoPath(file);
+//         const stat = fs.statSync(videoPath);
+//         items.push({
+//           name: file,
+//           title: safeDisplayName(path.parse(file).name),
+//           cover: `/api/thumbnail?name=${encodeURIComponent(file)}`,
+//           owner: '',
+//           desc: '',
+//           duration: 0,
+//           size: stat.size,
+//           sizeText: formatFileSize(stat.size),
+//           videoId: detectVideoIdFromName(file),
+//           progress: Number(readPlaybackFile(file)?.time || 0),
+//           progressPercent: 0
+//         });
+//       }
+//     }
+
+//     res.json(items);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: '无法读取媒体库' });
+//   }
+// });
+
+
+app.get("/api/library", async (req, res) => {
+  try {
+    const files = scanVideos(VIDEO_DIR);
+    const progressData = readProgress();
+
+    const results = [];
+
+    for (const fileName of files) {
+      const decodedName = decodeSafe(fileName);
+      const videoPath = path.join(VIDEO_DIR, fileName);
+      const stat = fs.statSync(videoPath);
+
+      const videoId = detectVideoIdFromName(decodedName);
+
+      let cover = null;
+
+      // ===== 强制优先使用B站封面 =====
+      if (videoId) {
+        cover = await fetchBiliCover(videoId);
+      }
+
+      // ===== 失败才本地缩略图 =====
+      if (!cover) {
+        cover = `/api/thumbnail?file=${encodeURIComponent(fileName)}`;
+      }
+
+      results.push({
+        name: decodedName,
+        path: fileName,
+        size: stat.size,
+        videoId,
+        cover,
+        progress: progressData[fileName] || 0
+      });
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: "视频库读取失败"
+    });
+  }
+});
+
+// app.get('/api/thumbnail', async (req, res) => {
+//   try {
+//     const rawName = req.query.name;
+//     if (!rawName) return res.status(400).send('缺少文件名');
+
+//     const relativeName = normalizeRelativePath(String(rawName));
+//     const videoPath = resolveVideoPath(relativeName);
+//     if (!fs.existsSync(videoPath)) return res.status(404).send('视频文件不存在');
+
+//     const thumbPath = getThumbPathForVideo(relativeName);
+//     if (fs.existsSync(thumbPath)) {
+//       res.setHeader('Content-Type', 'image/jpeg');
+//       return fs.createReadStream(thumbPath).pipe(res);
+//     }
+
+//     await generateLocalThumb(videoPath, thumbPath);
+//     res.setHeader('Content-Type', 'image/jpeg');
+//     return fs.createReadStream(thumbPath).pipe(res);
+//   } catch (err) {
+//     console.error('生成缩略图失败:', err.message);
+
+//     const fallback = Buffer.from(
+//       'iVBORw0KGgoAAAANSUhEUgAAAoAAAAHgCAQAAAC0U3tSAAABWUlEQVR42u3RMQ0AAAgDINc/9K3h' +
+//       'hQ0K2B5w0JAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+//       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+//       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+//       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+//       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+//       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+//       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4K6UAAZ2R' +
+//       '0q0AAAAASUVORK5CYII=',
+//       'base64'
+//     );
+//     res.setHeader('Content-Type', 'image/png');
+//     res.status(200).send(fallback);
+//   }
+// });
+
+// app.get("/api/thumbnail", async (req, res) => {
+//   try {
+//     const fileName = req.query.name;
+//     if (!fileName) return res.status(400).send("缺少文件名");
+
+//     const safeName = decodeSafe(fileName);
+//     const thumbPath = getThumbPath(safeName);
+
+//     // ========= 缓存存在 =========
+//     if (fs.existsSync(thumbPath)) {
+//       return res.sendFile(thumbPath);
+//     }
+
+//     // ========= 检测BV =========
+//     const videoId = detectVideoIdFromName(safeName);
+
+//     if (videoId && videoId.startsWith("BV")) {
+//       const coverUrl = await fetchBilibiliCover(videoId);
+
+//       if (coverUrl) {
+//         try {
+//           await downloadImage(coverUrl, thumbPath);
+
+//           if (fs.existsSync(thumbPath)) {
+//             return res.sendFile(thumbPath);
+//           }
+//         } catch (err) {
+//           console.error("BV封面下载失败:", err.message);
+//         }
+//       }
+//     }
+
+//     // ========= 回退本地截图 =========
+//     const videoPath = path.join(VIDEO_DIR, safeName);
+
+//     if (!fs.existsSync(videoPath)) {
+//       return res.status(404).send("视频不存在");
+//     }
+
+//     const generatedThumb = await generateLocalThumb(videoPath, safeName);
+
+//     if (!generatedThumb || !fs.existsSync(generatedThumb)) {
+//       return res.status(404).send("缩略图生成失败");
+//     }
+
+//     res.sendFile(generatedThumb);
+
+//   } catch (err) {
+//     console.error("缩略图失败:", err);
+//     res.status(500).send("缩略图失败");
+//   }
+// });
+
+app.get("/api/thumbnail", async (req, res) => {
+  try {
+    const fileName = req.query.name || req.query.file;
+    if (!fileName) return res.status(400).send("缺少文件名");
+
+    const safeName = decodeSafe(fileName);
+    const videoPath = path.join(VIDEO_DIR, safeName);
+
+    // if (!fs.existsSync(videoPath)) {
+    //   return res.status(404).send("视频不存在");
+    // }
+
+    const thumbPath = getThumbPath(safeName);
+
+    // 已缓存
+    if (fs.existsSync(thumbPath)) {
+      return res.sendFile(thumbPath);
+    }
+
+    const videoId = detectVideoIdFromName(safeName);
+
+    // BV/EP优先B站封面
+    if (videoId) {
       try {
-        items.push(await getLibraryItem(file));
-      } catch (err) {
-        const videoPath = resolveVideoPath(file);
-        const stat = fs.statSync(videoPath);
-        items.push({
-          name: file,
-          title: safeDisplayName(path.parse(file).name),
-          cover: `/api/thumbnail?name=${encodeURIComponent(file)}`,
-          owner: '',
-          desc: '',
-          duration: 0,
-          size: stat.size,
-          sizeText: formatFileSize(stat.size),
-          videoId: detectVideoIdFromName(file),
-          progress: Number(readPlaybackFile(file)?.time || 0),
-          progressPercent: 0
-        });
+        const coverUrl = await fetchBilibiliCover(videoId);
+        if (coverUrl) {
+          await downloadImage(coverUrl, thumbPath);
+          if (fs.existsSync(thumbPath)) {
+            return res.sendFile(thumbPath);
+          }
+        }
+      } catch (e) {
+        console.log("B站封面获取失败，回退本地截图");
       }
     }
 
-    res.json(items);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: '无法读取媒体库' });
-  }
-});
+    // FFmpeg截图兜底
+    await generateLocalThumb(videoPath, thumbPath);
 
-app.get('/api/thumbnail', async (req, res) => {
-  try {
-    const rawName = req.query.name;
-    if (!rawName) return res.status(400).send('缺少文件名');
-
-    const relativeName = normalizeRelativePath(String(rawName));
-    const videoPath = resolveVideoPath(relativeName);
-    if (!fs.existsSync(videoPath)) return res.status(404).send('视频文件不存在');
-
-    const thumbPath = getThumbPathForVideo(relativeName);
-    if (fs.existsSync(thumbPath)) {
-      res.setHeader('Content-Type', 'image/jpeg');
-      return fs.createReadStream(thumbPath).pipe(res);
+    if (!fs.existsSync(thumbPath)) {
+      return res.status(500).send("缩略图生成失败");
     }
 
-    await generateThumbnail(videoPath, thumbPath);
-    res.setHeader('Content-Type', 'image/jpeg');
-    return fs.createReadStream(thumbPath).pipe(res);
-  } catch (err) {
-    console.error('生成缩略图失败:', err.message);
+    res.sendFile(thumbPath);
 
-    const fallback = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAoAAAAHgCAQAAAC0U3tSAAABWUlEQVR42u3RMQ0AAAgDINc/9K3h' +
-      'hQ0K2B5w0JAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-      'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-      'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-      'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-      'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-      'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-      'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4K6UAAZ2R' +
-      '0q0AAAAASUVORK5CYII=',
-      'base64'
-    );
-    res.setHeader('Content-Type', 'image/png');
-    res.status(200).send(fallback);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("缩略图失败");
   }
 });
+
+// =========================
+// 安全解码文件名
+// 解决中文文件名 / 空格 / URL编码乱码问题
+// =========================
+function decodeSafe(fileName) {
+  try {
+    if (!fileName) return "";
+
+    // 先处理 + 号为空格
+    let decoded = fileName.replace(/\+/g, " ");
+
+    // 多次 decode 防止重复编码
+    while (decoded.includes("%")) {
+      const prev = decoded;
+      decoded = decodeURIComponent(decoded);
+
+      // 防止死循环
+      if (prev === decoded) break;
+    }
+
+    return decoded;
+
+  } catch (err) {
+    console.warn("文件名解码失败，使用原始名称:", fileName);
+    return fileName;
+  }
+}
+
+// =========================
+// 获取缩略图缓存路径
+// 自动将原视频文件名映射为 cache/thumbnails/*.jpg
+// =========================
+function getThumbPath(fileName) {
+  if (!fileName) return null;
+
+  // 防止路径穿越
+  const safeBaseName = path.basename(fileName);
+
+  // 使用 encodeURIComponent 避免中文/特殊字符乱码
+  const encodedName = encodeURIComponent(safeBaseName)
+    .replace(/%/g, "_");
+
+  return path.join(
+    THUMB_DIR,
+    `${encodedName}.jpg`
+  );
+}
+
+// =========================
+// 下载远程图片到本地缓存
+// 用于B站BV封面下载
+// =========================
+async function downloadImage(url, outputPath) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // 确保目录存在
+      const dir = path.dirname(outputPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const response = await axios({
+        url,
+        method: "GET",
+        responseType: "stream",
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Referer": "https://www.bilibili.com/"
+        },
+        timeout: 15000
+      });
+
+      const writer = fs.createWriteStream(outputPath);
+
+      response.data.pipe(writer);
+
+      writer.on("finish", () => {
+        resolve(outputPath);
+      });
+
+      writer.on("error", (err) => {
+        // 下载失败删除残留文件
+        if (fs.existsSync(outputPath)) {
+          fs.unlinkSync(outputPath);
+        }
+        reject(err);
+      });
+
+    } catch (err) {
+      // 下载失败删除残留文件
+      if (fs.existsSync(outputPath)) {
+        fs.unlinkSync(outputPath);
+      }
+
+      reject(err);
+    }
+  });
+}
 
 // 视频播放接口
 app.get('/video/:name', (req, res) => {
@@ -802,6 +1051,126 @@ function extractEpisodeNumberFromFileName(fileName) {
   }
 
   return null;
+}
+
+
+async function fetchBiliCoverByEpid(epid) {
+  try {
+    const url = `https://api.bilibili.com/pgc/view/web/season?ep_id=${epid}`;
+    console.log("Fetching EP cover with URL:", url);
+    const res = await axios.get(url, {
+      headers: getRequestHeaders(),
+      timeout: 10000
+    });
+
+    const episodes = res.data?.result?.episodes || [];
+    const current = episodes.find(
+      (ep) => String(ep.id) === String(epid)
+    );
+
+    if (!current?.cover) return null;
+
+    return current.cover;
+  } catch (err) {
+    console.error("EP封面获取失败:", epid, err.message);
+    return null;
+  }
+}
+
+async function fetchBiliCoverByBvid(bvid) {
+  try {
+    const url = `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`;
+    const res = await axios.get(url, {
+      headers: getRequestHeaders(),
+      timeout: 10000
+    });
+
+    const pic = res.data?.data?.pic;
+    if (!pic) return null;
+
+    return pic.replace("http://", "https://") + "@672w_378h_1c.jpg";
+  } catch (err) {
+    console.error("BV封面获取失败:", bvid, err.message);
+    return null;
+  }
+}
+
+async function fetchBiliCover(videoId) {
+  if (!videoId) return null;
+
+  if (videoId.toUpperCase().startsWith("BV")) {
+    return await fetchBiliCoverByBvid(videoId);
+  }
+
+  if (videoId.toLowerCase().startsWith("ep")) {
+    return await fetchBiliCoverByEpid(
+      videoId.replace(/^ep/i, "")
+    );
+  }
+
+  return null;
+}
+
+// =========================
+// 获取B站BV视频官方封面
+// =========================
+async function fetchBilibiliCover(bvid) {
+  try {
+    if (!bvid) return null;
+    const videoId = bvid.trim();
+    let picUrl;
+    if (bvid.toLowerCase().startsWith("ep")) {
+      const r1 = await fetchBiliCoverByEpid(
+        videoId.replace(/^ep/i, "")
+      );
+      console.log("EP封面获取结果:", r1);
+      picUrl = r1;
+    } else if (bvid.toUpperCase().startsWith("BV")) {
+      const apiUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`;
+      const response = await axios.get(apiUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Referer": "https://www.bilibili.com/"
+        },
+        timeout: 10000
+      });
+      picUrl = response.data?.data?.pic;
+    }
+
+    if (!picUrl) {
+      console.warn(`未找到B站封面: ${bvid}`);
+      return null;
+    }
+
+    // B站有时返回 //i0.hdslb.com/... 这种协议相对路径
+    const fullUrl = picUrl.startsWith("http")
+      ? picUrl
+      : `https:${picUrl}`;
+
+    return fullUrl;
+
+  } catch (err) {
+    console.error(`获取B站封面失败 (${bvid}):`, err.message);
+    return null;
+  }
+}
+
+async function generateThumbnail(videoPath, fileName) {
+  const thumbPath = getThumbPath(fileName);
+  if (fs.existsSync(thumbPath)) return thumbPath;
+
+  const videoId = detectVideoIdFromName(fileName);
+
+  if (videoId) {
+    const coverUrl = await fetchBilibiliCover(videoId);
+    if (coverUrl) {
+      await downloadImage(coverUrl, thumbPath);
+      return thumbPath;
+    }
+  }
+
+  await generateLocalThumb(videoPath, thumbPath);
+  return thumbPath;
 }
 
 const localIP = getLocalIP();
