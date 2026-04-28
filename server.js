@@ -53,7 +53,10 @@ const dmRoot = protobuf.parse(DM_PROTO).root;
 const DmSegMobileReply = dmRoot.lookupType('DmSegMobileReply');
 
 function getRequestHeaders() {
-  const headers = { 'User-Agent': 'Mozilla/5.0' };
+  const headers = {
+    'User-Agent': 'Mozilla/5.0',
+    'Referer': 'https://www.bilibili.com'
+  };
   if (process.env.BILI_SESSDATA) {
     headers.Cookie = `SESSDATA=${process.env.BILI_SESSDATA}`;
   }
@@ -200,6 +203,24 @@ async function fetchVideoMetaByEpid(epid) {
   };
 }
 
+async function fetchVideoMeta(id) {
+  const cacheKey = id.toUpperCase().startsWith('BV') ? id : `ep${String(id).replace(/^ep/i, '')}`;
+  const metaFile = path.join(META_DIR, `${cacheKey}.json`);
+
+  if (fs.existsSync(metaFile)) {
+    console.log('Using cached video meta for:', id);
+    return JSON.parse(fs.readFileSync(metaFile, 'utf-8'));
+  }
+
+  console.log('Fetching video meta for:', id);
+  const meta = id.toUpperCase().startsWith('BV')
+    ? await fetchVideoMetaByBvid(id)
+    : await fetchVideoMetaByEpid(String(id).replace(/^ep/i, ''));
+
+  fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2));
+  return meta;
+}
+
 async function fetchSeasonInfo(epId) {
   const url = `https://api.bilibili.com/pgc/view/web/season?ep_id=${epId}`;
   const res = await axios.get(url, { headers: getRequestHeaders(), timeout: 30000 });
@@ -224,6 +245,20 @@ async function fetchDanmuSeg({ cid, aid, segmentIndex }) {
     timeout: 10000
   });
   return Buffer.from(res.data);
+}
+
+function tryParseDanmuSeg(buffer, segmentIndex) {
+  const str = Buffer.from(buffer).toString('utf-8', 0, Math.min(buffer.length, 200));
+  if (str.startsWith('{')) {
+    console.log(`[seg.so] 分段 ${segmentIndex} B站返回了JSON错误:`, str);
+    return [];
+  }
+  try {
+    return parseDanmuSeg(buffer);
+  } catch (err) {
+    console.log(`[seg.so] 分段 ${segmentIndex} protobuf 解析失败:`, err.message, `| 前200字节:`, str);
+    return [];
+  }
 }
 
 function parseDanmu(xml) {
@@ -421,36 +456,68 @@ app.get('/api/danmu', async (req, res) => {
       return res.json({ ...JSON.parse(fs.readFileSync(cacheFile, 'utf-8')), fromCache: true });
     }
     console.log('Fetching danmu for ID:', id, 'Strategy:', requestedStrategy, 'Force Refresh:', forceRefresh);
-    const videoMeta = id.toUpperCase().startsWith('BV')
-      ? await fetchVideoMetaByBvid(id)
-      : await fetchVideoMetaByEpid(String(id).replace(/^ep/i, ''));
+    const videoMeta = await fetchVideoMeta(id);
 
     let danmus = [];
     let strategy = requestedStrategy;
 
     if (requestedStrategy === 'seg.so') {
-      try {
-        const segmentCount = Math.max(1, Math.ceil((videoMeta.duration || 0) / 360));
-        console.log(`[seg.so] 开始加载弹幕，共 ${segmentCount} 个分段...`);
-        console.time('[seg.so] 耗时');
-        const segments = await Promise.all(
-          Array.from({ length: segmentCount }, (_, i) =>
-            fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: i + 1 })
-          )
-        );
-        danmus = segments.flatMap(parseDanmuSeg);
-        console.timeEnd('[seg.so] 耗时');
-        console.log(`[seg.so] 加载完成，共 ${danmus.length} 条弹幕`);
-      } catch (err) {
-        console.timeEnd('[seg.so] 耗时');
-        console.log('[seg.so] 获取失败，降级到 XML:', err.message);
-        strategy = 'xml';
-        console.time('[xml] 耗时');
-        const xml = await fetchDanmuXml(videoMeta.cid);
-        danmus = parseDanmu(xml);
-        console.timeEnd('[xml] 耗时');
-        console.log(`[xml] 加载完成，共 ${danmus.length} 条弹幕`);
+      const segmentCount = Math.max(1, Math.ceil((videoMeta.duration || 0) / 360));
+      console.log(`[seg.so] 开始加载弹幕，共 ${segmentCount} 个分段...`);
+      console.time('[seg.so] 耗时');
+
+      const concurrency = 3;
+      const results = [];
+      for (let i = 0; i < segmentCount; i += concurrency) {
+        const batch = Array.from({ length: Math.min(concurrency, segmentCount - i) }, (_, j) => ({
+          index: i + j + 1,
+          promise: fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: i + j + 1 })
+        }));
+        const settled = await Promise.allSettled(batch.map(b => b.promise));
+        settled.forEach((r, j) => {
+          results[batch[j].index - 1] = r;
+        });
+        if (i + concurrency < segmentCount) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
+
+      danmus = [];
+      const retryIndices = [];
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') {
+          const parsed = tryParseDanmuSeg(r.value, i + 1);
+          if (parsed.length) {
+            danmus.push(...parsed);
+          } else {
+            retryIndices.push(i + 1);
+          }
+        } else {
+          retryIndices.push(i + 1);
+        }
+      });
+
+      if (retryIndices.length) {
+        console.log(`[seg.so] ${retryIndices.length} 个分段失败，1秒后重试...`);
+        for (const idx of retryIndices) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          try {
+            const buf = await fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: idx });
+            const parsed = tryParseDanmuSeg(buf, idx);
+            if (parsed.length) {
+              danmus.push(...parsed);
+              console.log(`[seg.so] 分段 ${idx} 重试成功，${parsed.length} 条`);
+            } else {
+              console.log(`[seg.so] 分段 ${idx} 重试仍然失败，已放弃`);
+            }
+          } catch (err) {
+            console.log(`[seg.so] 分段 ${idx} 重试异常:`, err.message);
+          }
+        }
+      }
+
+      console.timeEnd('[seg.so] 耗时');
+      console.log(`[seg.so] 加载完成，共 ${danmus.length} 条弹幕`);
     } else {
       console.time('[xml] 耗时');
       const xml = await fetchDanmuXml(videoMeta.cid);
@@ -547,6 +614,7 @@ app.get('/api/thumbnail', async (req, res) => {
     if (videoId) {
       try {
         const coverUrl = await fetchBiliCover(videoId);
+        console.log('尝试获取B站封面，视频ID:', videoId, '封面URL:', coverUrl);
         if (coverUrl) {
           await downloadImage(coverUrl, thumbPath);
           if (fs.existsSync(thumbPath)) {
