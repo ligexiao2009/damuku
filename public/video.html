@@ -254,8 +254,23 @@
       flex: 1;
       min-height: 0;
       overflow-y: auto;
-      padding-right: 2px;
+      padding-right: 4px;
       align-content: start;
+    }
+
+    /* ====== 新增：美化播放列表的滚动条 ====== */
+    .playlist-list::-webkit-scrollbar {
+      width: 4px;
+    }
+    .playlist-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+    .playlist-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .playlist-list:hover::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.3);
     }
 
     .playlist-item {
@@ -623,6 +638,7 @@
               <button id="nextVideoBtn" type="button">下一集</button>
             </div>
           </div>
+          <select id="folderSelect" title="服务器视频目录" style="width:100%; margin-bottom:8px;"></select>
           <div class="playlist-list" id="playlist"></div>
         </aside>
       </div>
@@ -637,6 +653,7 @@
     const folderPicker = document.getElementById('folderPicker');
     const pickFolderBtn = document.getElementById('pickFolderBtn');
     const loadServerFilesBtn = document.getElementById('loadServerFilesBtn');
+    const folderSelect = document.getElementById('folderSelect');
     const loadDanmuBtn = document.getElementById('loadDanmu');
     const refreshDanmuBtn = document.getElementById('refreshDanmuBtn');
     const toggleStatusBtn = document.getElementById('toggleStatusBtn');
@@ -1077,7 +1094,6 @@
 
       renderPlaylist();
       if (removing && removing.file && removing.isRemote === false && currentObjectUrl) {
-        // keep object URL if still used by another item
         const stillUsed = currentPlaylist.some(
           p => p.isRemote === false && p.file === removing.file
         );
@@ -1157,6 +1173,14 @@
 
       updatePlaylistControls();
       updateStatusBar();
+
+      // ====== 新增：自动滚动到当前选中的项目 ======
+      requestAnimationFrame(() => {
+        const activeItem = playlist.querySelector('.playlist-item.active');
+        if (activeItem) {
+          activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      });
     }
 
     function updateDanmuSettings() {
@@ -1186,8 +1210,19 @@
           width = height * ratio;
         }
 
+        const finalHeight = Math.max(180, height);
         player.style.width = `${Math.max(220, Math.min(width, containerWidth))}px`;
-        player.style.height = `${Math.max(180, height)}px`;
+        player.style.height = `${finalHeight}px`;
+
+        // ====== 新增：将视频计算出的高度同步给播放列表 ======
+        const playlistPanel = document.querySelector('.playlist-panel');
+        if (window.innerWidth > 980) {
+          // 桌面端保持列表高度与视频区域绝对一致
+          playlistPanel.style.height = `${finalHeight}px`;
+        } else {
+          // 移动端/窄屏因为是上下布局，设定一个固定高度
+          playlistPanel.style.height = '400px'; 
+        }
       }
 
       requestAnimationFrame(() => {
@@ -1209,7 +1244,7 @@
         relativePath: file.webkitRelativePath || file.name,
         videoId: detectVideoIdFromName(file.name),
         isRemote: false,
-        thumbnailUrl: `/api/thumbnail?name=${encodeURIComponent(file.name)}` // 修改：向后端请求缩略图
+        thumbnailUrl: `/api/thumbnail?name=${encodeURIComponent(file.name)}`
       }));
 
       currentPlaylistIndex = -1;
@@ -1242,7 +1277,7 @@
           relativePath: file.webkitRelativePath || file.name,
           videoId: detectVideoIdFromName(file.name),
           isRemote: false,
-          thumbnailUrl: `/api/thumbnail?name=${encodeURIComponent(file.name)}` // 修改：向后端请求缩略图
+          thumbnailUrl: `/api/thumbnail?name=${encodeURIComponent(file.name)}`
         }));
 
       if (!newItems.length) {
@@ -1335,7 +1370,9 @@
       return true;
     }
 
-    loadServerFilesBtn.addEventListener('click', async () => {
+    loadServerFilesBtn.addEventListener('click', loadServerVideos);
+
+    async function loadServerVideos() {
       try {
         const res = await fetch('/api/videos');
         const fileNames = await res.json();
@@ -1364,7 +1401,50 @@
         console.error('获取服务器视频列表失败:', err);
         alert('获取服务器视频列表失败，请检查 Node.js 服务是否正常启动。');
       }
+    }
+
+    async function loadFolders() {
+      try {
+        const res = await fetch('/api/folders');
+        const folders = await res.json();
+        folderSelect.innerHTML = '';
+        if (!folders || folders.length === 0) {
+          folderSelect.innerHTML = '<option value="">-- 无可用目录 --</option>';
+          return;
+        }
+        folders.forEach(f => {
+          const opt = document.createElement('option');
+          opt.value = f.path;
+          opt.textContent = f.name;
+          folderSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('获取文件夹列表失败:', err);
+        folderSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
+      }
+    }
+
+    folderSelect.addEventListener('change', async () => {
+      const dir = folderSelect.value;
+      if (!dir) return;
+      try {
+        const res = await fetch('/api/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoDir: dir })
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          return alert(data.error || '切换目录失败');
+        }
+        await loadServerVideos();
+      } catch (err) {
+        console.error('切换目录失败:', err);
+        alert('切换目录失败');
+      }
     });
+
+    loadFolders();
 
     videoFile.addEventListener('change', e => {
       const files = Array.from(e.target.files || []);

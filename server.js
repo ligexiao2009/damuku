@@ -16,7 +16,7 @@ const PLAYBACK_DIR = path.join(__dirname, 'playback');
 const DANMU_DIR = path.join(CACHE_DIR, 'danmu');
 const THUMB_DIR = path.join(CACHE_DIR, 'thumbs');
 const META_DIR = path.join(CACHE_DIR, 'meta');
-const VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
+let VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
 
 for (const dir of [CACHE_DIR, PLAYBACK_DIR, DANMU_DIR, THUMB_DIR, META_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -539,7 +539,7 @@ app.get('/api/danmu', async (req, res) => {
 app.get('/api/videos', (req, res) => {
   try {
     console.log('VIDEO_DIR:', VIDEO_DIR);
-    const files = scanVideos(VIDEO_DIR).filter(f => f.endsWith('.mp4'));
+    const files = scanVideos(VIDEO_DIR);
     files.sort((a, b) =>
       a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
     );
@@ -547,6 +547,49 @@ app.get('/api/videos', (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '无法读取文件列表' });
+  }
+});
+
+app.put('/api/config', (req, res) => {
+  try {
+    const { videoDir } = req.body;
+    if (!videoDir || typeof videoDir !== 'string') {
+      return res.status(400).json({ error: '缺少 videoDir 参数' });
+    }
+    const resolved = path.resolve(videoDir);
+    if (!fs.existsSync(resolved)) {
+      return res.status(400).json({ error: `目录不存在: ${resolved}` });
+    }
+    if (!fs.statSync(resolved).isDirectory()) {
+      return res.status(400).json({ error: `路径不是目录: ${resolved}` });
+    }
+    VIDEO_DIR = resolved;
+    console.log('VIDEO_DIR updated to:', VIDEO_DIR);
+    res.json({ videoDir: VIDEO_DIR });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '更新配置失败' });
+  }
+});
+
+const FOLDERS_BASE = process.env.FOLDERS_BASE || path.join(os.homedir(), 'video');
+
+app.get('/api/folders', (req, res) => {
+  try {
+    const entries = fs.readdirSync(FOLDERS_BASE, { withFileTypes: true });
+    const folders = [{ path: FOLDERS_BASE, name: '(根目录)' }];
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        folders.push({
+          path: path.join(FOLDERS_BASE, entry.name),
+          name: entry.name
+        });
+      }
+    }
+    res.json(folders);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '读取文件夹列表失败' });
   }
 });
 
