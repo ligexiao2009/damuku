@@ -212,10 +212,12 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) 300px;
       gap: 12px;
-      align-items: start;
+      align-items: stretch;
     }
 
     .playlist-panel {
+      display: flex;
+      flex-direction: column;
       background: var(--panel);
       border: 1px solid var(--panel-border);
       border-radius: 20px;
@@ -223,6 +225,7 @@
       backdrop-filter: blur(18px);
       padding: 12px;
       min-height: 180px;
+      overflow: hidden;
     }
 
     .playlist-header {
@@ -231,6 +234,7 @@
       justify-content: space-between;
       gap: 8px;
       margin-bottom: 10px;
+      flex-shrink: 0;
     }
 
     .playlist-title {
@@ -246,9 +250,11 @@
     .playlist-list {
       display: grid;
       gap: 6px;
-      max-height: 560px;
+      flex: 1;
+      min-height: 0;
       overflow-y: auto;
       padding-right: 2px;
+      align-content: start;
     }
 
     .playlist-item {
@@ -309,9 +315,19 @@
     }
 
     .settings-row {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(min-content, 1fr));
+      display: flex;
+      flex-wrap: wrap;
       gap: 4px;
+      align-items: center;
+    }
+
+    .settings-row .setting-group {
+      flex: 1 1 auto;
+      min-width: 160px;
+    }
+
+    .settings-row > button {
+      flex: 0 0 auto;
     }
 
     .settings-row.hidden {
@@ -434,9 +450,6 @@
         border-radius: 18px;
       }
 
-      .playlist-list {
-        max-height: 260px;
-      }
     }
   
     .playlist-panel {
@@ -444,6 +457,7 @@
     }
 
     .playlist-item {
+      position: relative;
       grid-template-columns: 110px minmax(0, 1fr);
       align-items: stretch;
       gap: 10px;
@@ -488,6 +502,35 @@
       font-weight: 700;
       line-height: 1.3;
       backdrop-filter: blur(8px);
+    }
+
+    .playlist-item-delete {
+      position: absolute;
+      right: 6px;
+      top: 6px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 22px;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 2;
+      backdrop-filter: blur(6px);
+    }
+
+    .playlist-item:hover .playlist-item-delete,
+    .playlist-item:focus-within .playlist-item-delete {
+      opacity: 1;
+    }
+
+    .playlist-item-delete:hover {
+      background: rgba(220, 38, 38, 0.8);
     }
 
     .playlist-item.active .playlist-thumb-wrap {
@@ -545,13 +588,6 @@
         <button id="pickFolderBtn">选择文件夹</button>
         <button id="loadServerFilesBtn">获取服务器视频</button>
         <input type="text" id="bvidInput" placeholder="输入BV号或ep号">
-        <select id="strategySelect" title="弹幕获取策略">
-          <option value="xml">XML</option>
-          <option value="seg.so" selected>seg.so</option>
-        </select>
-        <button id="loadDanmu">加载弹幕</button>
-        <button id="refreshDanmuBtn">刷新弹幕</button>
-        <button id="toggleStatusBtn">状态栏</button>
         <button id="fullScreenBtn">全屏播放</button>
         <button id="toggleSettingsBtn">弹幕设置</button>
         <div class="settings-row hidden">
@@ -570,6 +606,13 @@
             <input type="range" id="offsetControl" min="-120" max="120" value="0" step="1">
             <span class="setting-value" id="offsetValue">0秒</span>
           </div>
+           <select id="strategySelect" title="弹幕获取策略">
+            <option value="xml">XML</option>
+            <option value="seg.so" selected>seg.so</option>
+          </select>
+          <button id="loadDanmu">加载弹幕</button>
+          <button id="refreshDanmuBtn">刷新弹幕</button>
+          <button id="toggleStatusBtn">状态栏</button>
         </div>
       </div>
       <div class="control-hint">如果从 iPad 等设备访问网页，请点击“获取服务器视频”播放 Mac 同目录下的视频文件；自动弹幕会优先识别文件名里的 `ep473307` 或 `BV...`。</div>
@@ -1042,6 +1085,33 @@
       danmuLoopId = requestAnimationFrame(tick);
     }
 
+    function removePlaylistItem(index) {
+      const removing = currentPlaylist[index];
+      currentPlaylist.splice(index, 1);
+
+      if (currentPlaylist.length === 0) {
+        currentPlaylistIndex = -1;
+        currentVideoMemoryId = '';
+      } else if (index === currentPlaylistIndex) {
+        currentPlaylistIndex = Math.min(index, currentPlaylist.length - 1);
+        playFileAtIndex(currentPlaylistIndex);
+      } else if (index < currentPlaylistIndex) {
+        currentPlaylistIndex--;
+      }
+
+      renderPlaylist();
+      if (removing && removing.file && removing.isRemote === false && currentObjectUrl) {
+        // keep object URL if still used by another item
+        const stillUsed = currentPlaylist.some(
+          p => p.isRemote === false && p.file === removing.file
+        );
+        if (!stillUsed) {
+          URL.revokeObjectURL(currentObjectUrl);
+          currentObjectUrl = null;
+        }
+      }
+    }
+
     function renderPlaylist() {
       playlist.innerHTML = '';
 
@@ -1092,8 +1162,18 @@
         body.appendChild(name);
         body.appendChild(meta);
 
+        const delBtn = document.createElement('button');
+        delBtn.className = 'playlist-item-delete';
+        delBtn.textContent = '×';
+        delBtn.title = '从列表移除';
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removePlaylistItem(index);
+        });
+
         button.appendChild(thumbWrap);
         button.appendChild(body);
+        button.appendChild(delBtn);
         button.addEventListener('click', () => playFileAtIndex(index));
 
         playlist.appendChild(button);

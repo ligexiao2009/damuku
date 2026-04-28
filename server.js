@@ -221,7 +221,7 @@ async function fetchDanmuSeg({ cid, aid, segmentIndex }) {
     params: { type: 1, pid: aid, oid: cid, segment_index: segmentIndex },
     responseType: 'arraybuffer',
     headers: getRequestHeaders(),
-    timeout: 15000
+    timeout: 10000
   });
   return Buffer.from(res.data);
 }
@@ -431,21 +431,32 @@ app.get('/api/danmu', async (req, res) => {
     if (requestedStrategy === 'seg.so') {
       try {
         const segmentCount = Math.max(1, Math.ceil((videoMeta.duration || 0) / 360));
+        console.log(`[seg.so] 开始加载弹幕，共 ${segmentCount} 个分段...`);
+        console.time('[seg.so] 耗时');
         const segments = await Promise.all(
           Array.from({ length: segmentCount }, (_, i) =>
             fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: i + 1 })
           )
         );
         danmus = segments.flatMap(parseDanmuSeg);
+        console.timeEnd('[seg.so] 耗时');
+        console.log(`[seg.so] 加载完成，共 ${danmus.length} 条弹幕`);
       } catch (err) {
-        console.log('seg.so 获取失败，降级到 XML:', err.message);
+        console.timeEnd('[seg.so] 耗时');
+        console.log('[seg.so] 获取失败，降级到 XML:', err.message);
         strategy = 'xml';
+        console.time('[xml] 耗时');
         const xml = await fetchDanmuXml(videoMeta.cid);
         danmus = parseDanmu(xml);
+        console.timeEnd('[xml] 耗时');
+        console.log(`[xml] 加载完成，共 ${danmus.length} 条弹幕`);
       }
     } else {
+      console.time('[xml] 耗时');
       const xml = await fetchDanmuXml(videoMeta.cid);
       danmus = parseDanmu(xml);
+      console.timeEnd('[xml] 耗时');
+      console.log(`[xml] 加载完成，共 ${danmus.length} 条弹幕`);
     }
 
     const cacheFileFinal = getCacheFilePaths(cacheKey, strategy)[0];
