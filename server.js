@@ -13,11 +13,12 @@ const PORT = Number(process.env.PORT) || 3000;
 
 const CACHE_DIR = path.join(__dirname, 'cache');
 const PLAYBACK_DIR = path.join(__dirname, 'playback');
+const DANMU_DIR = path.join(CACHE_DIR, 'danmu');
 const THUMB_DIR = path.join(CACHE_DIR, 'thumbs');
 const META_DIR = path.join(CACHE_DIR, 'meta');
 const VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
 
-for (const dir of [CACHE_DIR, PLAYBACK_DIR, THUMB_DIR, META_DIR]) {
+for (const dir of [CACHE_DIR, PLAYBACK_DIR, DANMU_DIR, THUMB_DIR, META_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -65,7 +66,7 @@ function getRequestHeaders() {
 
 function getCacheFilePaths(cacheKey, strategy) {
   const suffix = strategy === 'seg.so' ? 'seg_so' : 'xml';
-  return [path.join(CACHE_DIR, `${cacheKey}.${suffix}.json`)];
+  return [path.join(DANMU_DIR, `${cacheKey}.${suffix}.json`)];
 }
 
 function decodeSafe(fileName) {
