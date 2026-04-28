@@ -539,7 +539,7 @@ app.get('/api/danmu', async (req, res) => {
 app.get('/api/videos', (req, res) => {
   try {
     console.log('VIDEO_DIR:', VIDEO_DIR);
-    const files = scanVideos(VIDEO_DIR);
+    const files = scanVideos(VIDEO_DIR).filter(f => f.endsWith('.mp4'));
     files.sort((a, b) =>
       a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
     );
