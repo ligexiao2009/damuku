@@ -440,6 +440,101 @@
         max-height: 260px;
       }
     }
+  
+    .playlist-panel {
+      width: 100%;
+    }
+
+    .playlist-item {
+      grid-template-columns: 110px minmax(0, 1fr);
+      align-items: stretch;
+      gap: 10px;
+      padding: 10px;
+      text-align: left;
+    }
+
+    .playlist-item-body {
+      display: grid;
+      align-content: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .playlist-thumb-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      flex-shrink: 0;
+    }
+
+    .playlist-thumb {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .playlist-thumb-badge {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.62);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.3;
+      backdrop-filter: blur(8px);
+    }
+
+    .playlist-item.active .playlist-thumb-wrap {
+      border-color: rgba(255, 107, 138, 0.45);
+      box-shadow: 0 0 0 2px rgba(255, 107, 138, 0.08) inset;
+    }
+
+    .playlist-thumb-placeholder {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+    }
+
+    .playlist-item-name {
+      font-size: 12px;
+      font-weight: 700;
+      word-break: break-word;
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .playlist-item-meta {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    @media (max-width: 720px) {
+      .playlist-item {
+        grid-template-columns: 96px minmax(0, 1fr);
+      }
+
+      .playlist-item-name {
+        font-size: 13px;
+      }
+    }
+
   </style>
 </head>
 
@@ -516,13 +611,14 @@
     </section>
   </main>
 
+  
   <script>
     const video = document.getElementById('video');
     const player = document.getElementById('player');
     const videoFile = document.getElementById('videoFile');
     const folderPicker = document.getElementById('folderPicker');
     const pickFolderBtn = document.getElementById('pickFolderBtn');
-    const loadServerFilesBtn = document.getElementById('loadServerFilesBtn'); // 新增按钮
+    const loadServerFilesBtn = document.getElementById('loadServerFilesBtn');
     const loadDanmuBtn = document.getElementById('loadDanmu');
     const refreshDanmuBtn = document.getElementById('refreshDanmuBtn');
     const toggleStatusBtn = document.getElementById('toggleStatusBtn');
@@ -550,23 +646,28 @@
     const statusPlaylist = document.getElementById('statusPlaylist');
     const statusFile = document.getElementById('statusFile');
     const statusBar = document.getElementById('statusBar');
+
     const playbackMemoryKey = 'b-video-playback-memory';
     const danmuSettingsKey = 'b-video-danmu-settings';
     const statusBarVisibleKey = 'b-video-status-bar-visible';
+    const progressSaveInterval = 5000;
+
+    const placeholderThumb = createThumbPlaceholder('暂无缩略图');
+    const placeholderLocalThumb = createThumbPlaceholder('本地文件');
 
     let danmus = [];
     let danmuIndex = 0;
     let danmuDuration = Number(speedControl.value);
     let danmuAreaRatio = Number(areaControl.value) / 100;
     let danmuOffset = Number(offsetControl.value);
+
     let currentVideoMemoryId = '';
-    let pendingResumeTime = null;
+    let pendingResumeTime = 0;
     let currentVideoName = '未选择';
     let currentPlaylist = [];
     let currentPlaylistIndex = -1;
     let currentObjectUrl = '';
 
-    // 性能优化全局变量缓存
     let layerW = 0;
     let layerH = 0;
     const danmuPool = [];
@@ -582,18 +683,72 @@
 
     let lastVideoTime = 0;
     let lastPerfTime = 0;
+    let lastProgressSave = 0;
+
+    function createThumbPlaceholder(label) {
+      const safe = String(label || '暂无缩略图')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 480 270">
+          <defs>
+            <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="#20293a"/>
+              <stop offset="100%" stop-color="#0c1017"/>
+            </linearGradient>
+          </defs>
+          <rect width="480" height="270" fill="url(#g)"/>
+          <rect x="18" y="18" width="444" height="234" rx="20" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)"/>
+          <text x="50%" y="46%" text-anchor="middle" fill="#f6f7fb" font-size="28" font-family="PingFang SC, Microsoft YaHei, sans-serif">${safe}</text>
+          <text x="50%" y="60%" text-anchor="middle" fill="#a8b0c2" font-size="16" font-family="PingFang SC, Microsoft YaHei, sans-serif">B站弹幕播放器</text>
+        </svg>
+      `.trim();
+
+      return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+    }
+
+    function safeDisplayName(name) {
+      try {
+        return decodeURIComponent(String(name || ''));
+      } catch {
+        return String(name || '');
+      }
+    }
+
+    function escapeHtml(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
     function readPlaybackMemory() {
-      try { return JSON.parse(localStorage.getItem(playbackMemoryKey) || '{}'); } catch (error) { return {}; }
+      try {
+        return JSON.parse(localStorage.getItem(playbackMemoryKey) || '{}');
+      } catch {
+        return {};
+      }
     }
 
-    function writePlaybackMemory(memory) { localStorage.setItem(playbackMemoryKey, JSON.stringify(memory)); }
+    function writePlaybackMemory(memory) {
+      localStorage.setItem(playbackMemoryKey, JSON.stringify(memory));
+    }
 
     function readDanmuSettings() {
-      try { return JSON.parse(localStorage.getItem(danmuSettingsKey) || '{}'); } catch (error) { return {}; }
+      try {
+        return JSON.parse(localStorage.getItem(danmuSettingsKey) || '{}');
+      } catch {
+        return {};
+      }
     }
 
-    function writeDanmuSettings(settings) { localStorage.setItem(danmuSettingsKey, JSON.stringify(settings)); }
+    function writeDanmuSettings(settings) {
+      localStorage.setItem(danmuSettingsKey, JSON.stringify(settings));
+    }
 
     function readStatusBarVisible() {
       const saved = localStorage.getItem(statusBarVisibleKey);
@@ -612,7 +767,9 @@
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
       const secs = totalSeconds % 60;
-      if (hours > 0) return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      if (hours > 0) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
       return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
 
@@ -652,8 +809,24 @@
       return Boolean(file && videoFilePattern.test(file.name || ''));
     }
 
+    function naturalSortValues(values) {
+      return [...values].sort((a, b) => {
+        const pathA = typeof a === 'string' ? a : (a.relativePath || a.webkitRelativePath || a.name || '');
+        const pathB = typeof b === 'string' ? b : (b.relativePath || b.webkitRelativePath || b.name || '');
+        return pathA.localeCompare(pathB, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+      });
+    }
+
     function getPlaylistLabel(item) {
-      return item.relativePath || item.file.name;
+      return safeDisplayName(item.relativePath || item.file.name);
+    }
+
+    function getThumbnailUrl(item) {
+      if (item.thumbnailUrl) return item.thumbnailUrl;
+      if (item.isRemote) {
+        return `/api/thumbnail?name=${encodeURIComponent(item.relativePath || item.file.name)}`;
+      }
+      return item.videoId ? placeholderThumb : placeholderLocalThumb;
     }
 
     function formatFileSize(size) {
@@ -668,28 +841,9 @@
       return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
     }
 
-    function naturalSortFiles(files) {
-      return [...files].sort((a, b) => {
-        const pathA =
-          typeof a === 'string'
-            ? a
-            : a.relativePath || a.webkitRelativePath || a.name;
-
-        const pathB =
-          typeof b === 'string'
-            ? b
-            : b.relativePath || b.webkitRelativePath || b.name;
-
-        return pathA.localeCompare(pathB, 'zh-Hans-CN', {
-          numeric: true,
-          sensitivity: 'base'
-        });
-      });
-    }
-
     function detectVideoIdFromName(name) {
       if (!name) return '';
-      const baseName = name.replace(/\.[^.]+$/, '');
+      const baseName = String(name).replace(/\.[^.]+$/, '');
       const bvidMatch = baseName.match(/BV[0-9A-Za-z]+/i);
       if (bvidMatch) return bvidMatch[0];
       const explicitEpMatch = baseName.match(/(?:^|[_\s-])(ep\d{4,})(?=$|[_\s-])/i);
@@ -697,24 +851,46 @@
       return '';
     }
 
-    function getSavedPlaybackTime(memoryId) {
-      if (!memoryId) return null;
-      const memory = readPlaybackMemory();
-      const savedTime = Number(memory[memoryId]);
-      return Number.isFinite(savedTime) && savedTime > 0 ? savedTime : null;
+    async function getPlaybackProgress(id) {
+      if (!id) return 0;
+      try {
+        const res = await fetch(`/api/progress?id=${encodeURIComponent(id)}`);
+        const data = await res.json();
+        return Number(data.time || 0);
+      } catch (err) {
+        console.error('获取播放记录失败:', err);
+        return 0;
+      }
     }
 
-    function saveCurrentPlaybackTime(force = false) {
+    async function savePlaybackProgress(force = false) {
+      const now = Date.now();
+      if (!force && now - lastProgressSave < progressSaveInterval) return;
+      lastProgressSave = now;
+
       if (!currentVideoMemoryId || !video.duration || !Number.isFinite(video.currentTime)) return;
-      const currentTime = video.currentTime;
-      const safeTime = force ? Math.min(currentTime, Math.max(0, video.duration - 1)) : currentTime;
-      const memory = readPlaybackMemory();
-      if (video.ended || safeTime >= video.duration - 1) {
-        delete memory[currentVideoMemoryId];
-      } else {
-        memory[currentVideoMemoryId] = Number(safeTime.toFixed(2));
+
+      let currentTime = video.currentTime;
+      if (force) {
+        currentTime = Math.min(currentTime, Math.max(0, video.duration - 1));
       }
-      writePlaybackMemory(memory);
+
+      if (video.ended || currentTime >= video.duration - 1) {
+        currentTime = 0;
+      }
+
+      try {
+        await fetch('/api/progress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: currentVideoMemoryId,
+            time: Number(currentTime.toFixed(2))
+          })
+        });
+      } catch (err) {
+        console.error('保存播放记录失败:', err);
+      }
     }
 
     function updateStatusBar({ count, fromCache, forceRefresh, fileName } = {}) {
@@ -725,8 +901,9 @@
       statusOffset.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
       statusPlaylist.textContent = currentPlaylist.length ? `${currentPlaylistIndex + 1} / ${currentPlaylist.length}` : '0 / 0';
       updatePlaybackStatus();
+
       if (fileName) currentVideoName = fileName;
-      statusFile.textContent = currentVideoName;
+      statusFile.textContent = safeDisplayName(currentVideoName);
     }
 
     function updatePlaylistControls() {
@@ -742,75 +919,6 @@
       if (mediaError.code === MediaError.MEDIA_ERR_DECODE) return '视频解码失败，通常是浏览器不支持这个文件里的编码。';
       if (mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) return '浏览器不支持这个视频文件。容器或其中的编码可能不兼容。';
       return '当前文件无法播放，可能是浏览器不支持该视频格式或编码。';
-    }
-
-    function renderPlaylist() {
-      playlist.innerHTML = '';
-      if (!currentPlaylist.length) {
-        const empty = document.createElement('div');
-        empty.className = 'playlist-empty';
-        empty.textContent = '选择本地视频，或点击【获取服务器视频】后，这里会自动生成播放列表。';
-        playlist.appendChild(empty);
-        playlistMeta.textContent = '未加载文件';
-        updatePlaylistControls();
-        updateStatusBar();
-        return;
-      }
-
-      playlistMeta.textContent = `共 ${currentPlaylist.length} 个视频`;
-
-      currentPlaylist.forEach((item, index) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = `playlist-item${index === currentPlaylistIndex ? ' active' : ''}`;
-
-        let labelHTML = `<span class="playlist-item-name">${getPlaylistLabel(item)}</span>`;
-        let metaHTML = `<span class="playlist-item-meta">${item.isRemote ? '[服务端视频]' : formatFileSize(item.file.size)}${item.videoId ? ` · ${item.videoId}` : ''}</span>`;
-
-        button.innerHTML = labelHTML + metaHTML;
-        button.addEventListener('click', () => playFileAtIndex(index));
-        playlist.appendChild(button);
-      });
-
-      updatePlaylistControls();
-      updateStatusBar();
-    }
-
-    function updateDanmuSettings() {
-      danmuDuration = Number(speedControl.value);
-      danmuAreaRatio = Number(areaControl.value) / 100;
-      danmuOffset = Number(offsetControl.value);
-      speedValue.textContent = `${danmuDuration}秒`;
-      areaValue.textContent = `${areaControl.value}%`;
-      offsetValue.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
-      writeDanmuSettings({ speed: danmuDuration, area: Number(areaControl.value), offset: danmuOffset });
-      laneAvailableAt = [];
-      updateStatusBar();
-    }
-
-    function updatePlayerSize() {
-      if (!document.fullscreenElement) {
-        const containerWidth = player.parentElement.clientWidth;
-        const playerTop = player.getBoundingClientRect().top;
-        const availableHeight = Math.max(220, window.innerHeight - playerTop - 24);
-        const ratio = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
-
-        let width = containerWidth;
-        let height = width / ratio;
-
-        if (height > availableHeight) {
-          height = availableHeight;
-          width = height * ratio;
-        }
-
-        player.style.width = `${Math.max(220, Math.min(width, containerWidth))}px`;
-        player.style.height = `${Math.max(180, height)}px`;
-      }
-
-      requestAnimationFrame(() => {
-        layerW = danmakuLayer.clientWidth;
-        layerH = danmakuLayer.clientHeight;
-      });
     }
 
     function measureDanmuWidth(text, fontSize) {
@@ -869,7 +977,7 @@
       const el = getDanmuDom();
       el.textContent = displayText;
       el.style.color = danmu.color || '#ffffff';
-      el.style.fontSize = fontSize + 'px';
+      el.style.fontSize = `${fontSize}px`;
 
       const y = earliestLaneIndex * laneHeight;
       const travelDistance = layerW + danmuWidth;
@@ -930,53 +1038,179 @@
         updatePlaybackStatus(interpolatedTime);
         danmuLoopId = requestAnimationFrame(tick);
       };
+
       danmuLoopId = requestAnimationFrame(tick);
     }
 
-    applySavedDanmuSettings();
-    updateDanmuSettings();
-    updatePlayerSize();
-    updateStatusBar();
-    setStatusBarVisible(readStatusBarVisible());
+    function renderPlaylist() {
+      playlist.innerHTML = '';
 
-    speedControl.addEventListener('input', updateDanmuSettings);
-    areaControl.addEventListener('input', updateDanmuSettings);
-    offsetControl.addEventListener('input', updateDanmuSettings);
-    window.addEventListener('resize', updatePlayerSize);
-    document.addEventListener('fullscreenchange', updatePlayerSize);
-
-    fullScreenBtn.addEventListener('click', () => {
-      if (!document.fullscreenElement) {
-        player.requestFullscreen().catch(err => alert(`全屏失败: ${err.message}`));
-      } else {
-        document.exitFullscreen();
+      if (!currentPlaylist.length) {
+        const empty = document.createElement('div');
+        empty.className = 'playlist-empty';
+        empty.textContent = '选择本地视频，或点击【获取服务器视频】后，这里会自动生成播放列表。';
+        playlist.appendChild(empty);
+        playlistMeta.textContent = '未加载文件';
+        updatePlaylistControls();
+        updateStatusBar();
+        return;
       }
-    });
 
-    player.addEventListener('dblclick', () => {
-      if (!document.fullscreenElement) player.requestFullscreen().catch(() => { });
-      else document.exitFullscreen().catch(() => { });
-    });
+      playlistMeta.textContent = `共 ${currentPlaylist.length} 个视频`;
 
-    player.addEventListener('click', event => {
-      if (event.target !== video && event.target !== danmakuLayer && !video.contains(event.target)) return;
-      if (!video.src) return;
+      currentPlaylist.forEach((item, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `playlist-item${index === currentPlaylistIndex ? ' active' : ''}`;
 
-      const controlsHeight = 48;
-      const rect = video.getBoundingClientRect();
-      const clickFromBottom = rect.bottom - event.clientY;
-      if (clickFromBottom <= controlsHeight) return;
+        const thumbWrap = document.createElement('div');
+        thumbWrap.className = 'playlist-thumb-wrap';
 
-      if (video.paused) video.play().catch(() => { });
-      else video.pause();
-    });
+        const img = document.createElement('img');
+        img.className = 'playlist-thumb';
+        img.loading = 'lazy';
+        img.alt = getPlaylistLabel(item);
+        img.src = getThumbnailUrl(item);
+        img.onerror = () => {
+          img.onerror = null;
+          img.src = item.isRemote ? placeholderThumb : placeholderLocalThumb;
+        };
+
+        const badge = document.createElement('span');
+        badge.className = 'playlist-thumb-badge';
+        badge.textContent = item.isRemote ? '服务器' : '本地';
+
+        thumbWrap.appendChild(img);
+        thumbWrap.appendChild(badge);
+
+        const body = document.createElement('div');
+        body.className = 'playlist-item-body';
+
+        const name = document.createElement('div');
+        name.className = 'playlist-item-name';
+        name.textContent = getPlaylistLabel(item);
+
+        const meta = document.createElement('div');
+        meta.className = 'playlist-item-meta';
+        meta.textContent = `${item.isRemote ? '[服务端视频]' : formatFileSize(item.file.size)}${item.videoId ? ` · ${item.videoId}` : ''}`;
+
+        body.appendChild(name);
+        body.appendChild(meta);
+
+        button.appendChild(thumbWrap);
+        button.appendChild(body);
+        button.addEventListener('click', () => playFileAtIndex(index));
+
+        playlist.appendChild(button);
+      });
+
+      updatePlaylistControls();
+      updateStatusBar();
+    }
+
+    function updateDanmuSettings() {
+      danmuDuration = Number(speedControl.value);
+      danmuAreaRatio = Number(areaControl.value) / 100;
+      danmuOffset = Number(offsetControl.value);
+      speedValue.textContent = `${danmuDuration}秒`;
+      areaValue.textContent = `${areaControl.value}%`;
+      offsetValue.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
+      writeDanmuSettings({ speed: danmuDuration, area: Number(areaControl.value), offset: danmuOffset });
+      laneAvailableAt = [];
+      updateStatusBar();
+    }
+
+    function updatePlayerSize() {
+      if (!document.fullscreenElement) {
+        const containerWidth = player.parentElement.clientWidth;
+        const playerTop = player.getBoundingClientRect().top;
+        const availableHeight = Math.max(220, window.innerHeight - playerTop - 24);
+        const ratio = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
+
+        let width = containerWidth;
+        let height = width / ratio;
+
+        if (height > availableHeight) {
+          height = availableHeight;
+          width = height * ratio;
+        }
+
+        player.style.width = `${Math.max(220, Math.min(width, containerWidth))}px`;
+        player.style.height = `${Math.max(180, height)}px`;
+      }
+
+      requestAnimationFrame(() => {
+        layerW = danmakuLayer.clientWidth;
+        layerH = danmakuLayer.clientHeight;
+      });
+    }
+
+    function loadFilesIntoPlaylist(files, preferredFileName = '') {
+      const videoFiles = naturalSortValues(files).filter(isVideoFile);
+      if (!videoFiles.length) {
+        alert('没有找到可播放的视频文件');
+        return;
+      }
+
+      const normalizedPreferred = preferredFileName || videoFiles[0].name;
+      currentPlaylist = videoFiles.map(file => ({
+        file,
+        relativePath: file.webkitRelativePath || file.name,
+        videoId: detectVideoIdFromName(file.name),
+        isRemote: false,
+        thumbnailUrl: placeholderLocalThumb
+      }));
+
+      currentPlaylistIndex = -1;
+      currentVideoName = '未选择';
+      danmus = [];
+      danmuIndex = 0;
+      clearDanmu();
+      renderPlaylist();
+
+      const startIndex = currentPlaylist.findIndex(item =>
+        item.file.name === normalizedPreferred || item.relativePath === normalizedPreferred
+      );
+
+      playFileAtIndex(startIndex === -1 ? 0 : startIndex);
+    }
+
+    function appendFilesToPlaylist(files) {
+      const videoFiles = naturalSortValues(files).filter(isVideoFile);
+      if (!videoFiles.length) {
+        alert('没有找到可播放的视频文件');
+        return;
+      }
+
+      const existingKeys = new Set(currentPlaylist.map(item => buildVideoMemoryId(item.file)));
+
+      const newItems = videoFiles
+        .filter(file => !existingKeys.has(buildVideoMemoryId(file)))
+        .map(file => ({
+          file,
+          relativePath: file.webkitRelativePath || file.name,
+          videoId: detectVideoIdFromName(file.name),
+          isRemote: false,
+          thumbnailUrl: placeholderLocalThumb
+        }));
+
+      if (!newItems.length) {
+        alert('这些文件已经在播放列表里了');
+        return;
+      }
+
+      const firstNewIndex = currentPlaylist.length;
+      currentPlaylist = [...currentPlaylist, ...newItems];
+      renderPlaylist();
+      playFileAtIndex(firstNewIndex);
+    }
 
     async function applyDanmuForVideoId(videoId, { showAlert = true, forceRefresh = false } = {}) {
       if (!videoId) {
         if (showAlert) alert('请输入BV号或ep号');
         return false;
       }
-      let loaded = false;
+
       try {
         const params = new URLSearchParams({ id: videoId, strategy: strategySelect.value });
         if (forceRefresh) params.set('refresh', '1');
@@ -986,26 +1220,27 @@
         if (!res.ok) throw new Error(data.error || '弹幕加载失败');
 
         danmus = data.danmus.sort((a, b) => a.time - b.time);
+        danmuIndex = 0;
+        clearDanmu();
         updateStatusBar({ count: data.count, fromCache: data.fromCache, forceRefresh: data.forceRefresh });
-        loaded = true;
+
+        if (showAlert) alert(`已加载 ${danmus.length} 条弹幕`);
+        return true;
       } catch (error) {
         danmus = [];
+        danmuIndex = 0;
+        clearDanmu();
         updateStatusBar({ count: 0, fromCache: false, forceRefresh });
         if (showAlert) alert(error.message || '弹幕加载失败');
         return false;
       }
-
-      danmuIndex = 0;
-      clearDanmu();
-      if (showAlert) alert(`已加载 ${danmus.length} 条弹幕`);
-      return loaded;
     }
 
     async function playFileAtIndex(index, { forceRefreshDanmu = false } = {}) {
       const item = currentPlaylist[index];
       if (!item) return false;
 
-      savePlaybackProgress(true);
+      await savePlaybackProgress(true);
       stopDanmuLoop();
       clearDanmu();
       danmus = [];
@@ -1015,6 +1250,7 @@
       currentVideoName = getPlaylistLabel(item);
       currentVideoMemoryId = buildVideoMemoryId(item.file);
       pendingResumeTime = await getPlaybackProgress(currentVideoMemoryId);
+
       renderPlaylist();
       updateStatusBar({ fileName: currentVideoName, count: 0, fromCache: null, forceRefresh: false });
 
@@ -1023,18 +1259,15 @@
         currentObjectUrl = '';
       }
 
-      // ========= 关键修改：区分来自服务端的视频和本地选择的视频 =========
       if (item.isRemote) {
-        // 请求服务端的 /stream 流媒体接口处理分段
         video.src = `/stream?name=${encodeURIComponent(item.relativePath || item.file.name)}`;
       } else {
-        // 本地电脑直接选择文件时的 Blob 挂载模式
         currentObjectUrl = URL.createObjectURL(item.file);
         video.src = currentObjectUrl;
       }
 
       video.addEventListener('canplay', () => {
-        video.play().catch(() => { });
+        video.play().catch(() => {});
       }, { once: true });
 
       updatePlayerSize();
@@ -1051,7 +1284,6 @@
       return true;
     }
 
-    // 新增：向服务端请求同目录下的视频列表 (专供 iPad 局域网访问使用)
     loadServerFilesBtn.addEventListener('click', async () => {
       try {
         const res = await fetch('/api/videos');
@@ -1061,12 +1293,13 @@
           return alert('服务器当前目录下没有找到视频文件！');
         }
 
-        currentPlaylist = naturalSortFiles(fileNames.map(name => ({
-          file: { name: name, size: 0, lastModified: 0 },
+        currentPlaylist = naturalSortValues(fileNames).map(name => ({
+          file: { name, size: 0, lastModified: 0 },
           relativePath: name,
           videoId: detectVideoIdFromName(name),
-          isRemote: true
-        })));
+          isRemote: true,
+          thumbnailUrl: `/api/thumbnail?name=${encodeURIComponent(name)}`
+        }));
 
         currentPlaylistIndex = -1;
         currentVideoName = '未选择';
@@ -1082,65 +1315,6 @@
       }
     });
 
-    function loadFilesIntoPlaylist(files, preferredFileName = '') {
-      const videoFiles = naturalSortFiles(files).filter(isVideoFile);
-      if (!videoFiles.length) {
-        alert('没有找到可播放的视频文件');
-        return;
-      }
-
-      const normalizedPreferred = preferredFileName || videoFiles[0].name;
-      currentPlaylist = videoFiles.map(file => ({
-        file,
-        relativePath: file.webkitRelativePath || file.name,
-        videoId: detectVideoIdFromName(file.name),
-        isRemote: false
-      }));
-      currentPlaylistIndex = -1;
-      currentVideoName = '未选择';
-      danmus = [];
-      danmuIndex = 0;
-      clearDanmu();
-      renderPlaylist();
-
-      const startIndex = currentPlaylist.findIndex(item =>
-        item.file.name === normalizedPreferred || item.relativePath === normalizedPreferred
-      );
-
-      playFileAtIndex(startIndex === -1 ? 0 : startIndex);
-    }
-
-    function appendFilesToPlaylist(files) {
-      const videoFiles = naturalSortFiles(files).filter(isVideoFile);
-      if (!videoFiles.length) {
-        alert('没有找到可播放的视频文件');
-        return;
-      }
-
-      const existingKeys = new Set(
-        currentPlaylist.map(item => buildVideoMemoryId(item.file))
-      );
-
-      const newItems = videoFiles
-        .filter(file => !existingKeys.has(buildVideoMemoryId(file)))
-        .map(file => ({
-          file,
-          relativePath: file.webkitRelativePath || file.name,
-          videoId: detectVideoIdFromName(file.name),
-          isRemote: false
-        }));
-
-      if (!newItems.length) {
-        alert('这些文件已经在播放列表里了');
-        return;
-      }
-
-      const firstNewIndex = currentPlaylist.length;
-      currentPlaylist = [...currentPlaylist, ...newItems];
-      renderPlaylist();
-      playFileAtIndex(firstNewIndex);
-    }
-
     videoFile.addEventListener('change', e => {
       const files = Array.from(e.target.files || []);
       if (files.length) appendFilesToPlaylist(files);
@@ -1149,6 +1323,7 @@
     });
 
     pickFolderBtn.addEventListener('click', () => folderPicker.click());
+
     folderPicker.addEventListener('change', e => {
       const files = Array.from(e.target.files || []);
       if (files.length) loadFilesIntoPlaylist(files, files.find(isVideoFile)?.webkitRelativePath || files[0].name);
@@ -1159,9 +1334,9 @@
     video.addEventListener('loadedmetadata', () => {
       updatePlayerSize();
       updatePlaybackStatus();
-      if (pendingResumeTime != null) {
+      if (pendingResumeTime > 0) {
         video.currentTime = Math.min(pendingResumeTime, Math.max(0, video.duration - 1));
-        pendingResumeTime = null;
+        pendingResumeTime = 0;
       }
     });
 
@@ -1203,71 +1378,59 @@
 
     loadDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim()));
     refreshDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim(), { forceRefresh: true }));
+
     prevVideoBtn.addEventListener('click', () => {
       if (currentPlaylistIndex > 0) playFileAtIndex(currentPlaylistIndex - 1);
     });
+
     nextVideoBtn.addEventListener('click', () => {
       if (currentPlaylistIndex < currentPlaylist.length - 1) playFileAtIndex(currentPlaylistIndex + 1);
     });
+
     toggleStatusBtn.addEventListener('click', () => setStatusBarVisible(statusBar.classList.contains('hidden')));
+
+    fullScreenBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        player.requestFullscreen().catch(err => alert(`全屏失败: ${err.message}`));
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    player.addEventListener('dblclick', () => {
+      if (!document.fullscreenElement) player.requestFullscreen().catch(() => {});
+      else document.exitFullscreen().catch(() => {});
+    });
+
+    player.addEventListener('click', event => {
+      if (event.target !== video && event.target !== danmakuLayer && !video.contains(event.target)) return;
+      if (!video.src) return;
+
+      const controlsHeight = 48;
+      const rect = video.getBoundingClientRect();
+      const clickFromBottom = rect.bottom - event.clientY;
+      if (clickFromBottom <= controlsHeight) return;
+
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
+    });
+
+    window.addEventListener('resize', updatePlayerSize);
+    document.addEventListener('fullscreenchange', updatePlayerSize);
+
     window.addEventListener('beforeunload', () => {
       savePlaybackProgress(true);
       if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     });
 
-    // 新增：将播放进度保存到服务器，以便在 iPad 等设备访问时能够继续上次的观看位置
-    let lastProgressSave = 0;
-    async function savePlaybackProgress(force = false) {
-
-      const now = Date.now();
-
-      if (!force && now - lastProgressSave < 5000) {
-        return;
-      }
-      lastProgressSave = now;
-      if (!currentVideoMemoryId || !video.duration || !Number.isFinite(video.currentTime)) return;
-
-      let currentTime = video.currentTime;
-
-      if (force) {
-        currentTime = Math.min(currentTime, Math.max(0, video.duration - 1));
-      }
-
-      if (video.ended || currentTime >= video.duration - 1) {
-        currentTime = 0;
-      }
-
-      try {
-        await fetch('/api/progress', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            id: currentVideoMemoryId,
-            time: currentTime
-          })
-        });
-      } catch (err) {
-        console.error('保存播放记录失败:', err);
-      }
-    }
-    // 定期保存播放进度到服务器，间隔为 15 秒
-    async function getPlaybackProgress(id) {
-      if (!id) return 0;
-
-      try {
-        const res = await fetch(`/api/progress?id=${encodeURIComponent(id)}`);
-        const data = await res.json();
-        return Number(data.time || 0);
-      } catch (err) {
-        console.error('获取播放记录失败:', err);
-        return 0;
-      }
-    }
-
+    applySavedDanmuSettings();
+    updateDanmuSettings();
+    updatePlayerSize();
+    updateStatusBar();
+    setStatusBarVisible(readStatusBarVisible());
     renderPlaylist();
   </script>
+
 </body>
 
 </html>
