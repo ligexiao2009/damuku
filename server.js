@@ -16,7 +16,11 @@ const PLAYBACK_DIR = path.join(__dirname, 'playback');
 const DANMU_DIR = path.join(CACHE_DIR, 'danmu');
 const THUMB_DIR = path.join(CACHE_DIR, 'thumbs');
 const META_DIR = path.join(CACHE_DIR, 'meta');
+const CONVERT_HISTORY_FILE = path.join(CACHE_DIR, 'convert_history.json');
 let VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
+const danmuProgressMap = new Map();
+const convertTasks = new Map();
+
 
 for (const dir of [CACHE_DIR, PLAYBACK_DIR, DANMU_DIR, THUMB_DIR, META_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -196,7 +200,7 @@ async function fetchVideoMetaByEpid(epid) {
   return {
     aid: current.aid,
     cid: current.cid,
-    duration: current.duration || 0,
+    duration: Math.round((current.duration || 0) / 1000),
     title: epRes.data?.result?.title || current.share_copy || '',
     cover: epRes.data?.result?.cover || '',
     owner: '',
@@ -239,13 +243,24 @@ async function fetchDanmuXml(cid) {
 
 async function fetchDanmuSeg({ cid, aid, segmentIndex }) {
   const url = 'https://api.bilibili.com/x/v2/dm/web/seg.so';
-  const res = await axios.get(url, {
-    params: { type: 1, pid: aid, oid: cid, segment_index: segmentIndex },
-    responseType: 'arraybuffer',
-    headers: getRequestHeaders(),
-    timeout: 10000
-  });
-  return Buffer.from(res.data);
+  const params = { type: 1, pid: aid, oid: cid, segment_index: segmentIndex };
+  console.log(`[seg.so] 请求分段 ${segmentIndex}: cid=${cid} aid=${aid}`);
+  try {
+    const res = await axios.get(url, {
+      params,
+      responseType: 'arraybuffer',
+      headers: getRequestHeaders(),
+      timeout: 10000
+    });
+    console.log(`[seg.so] 分段 ${segmentIndex} 响应: status=${res.status} size=${res.data.length}`);
+    return Buffer.from(res.data);
+  } catch (err) {
+    const detail = err.response
+      ? `status=${err.response.status} body=${Buffer.from(err.response.data || '').toString('utf-8').slice(0, 200)}`
+      : err.message;
+    console.log(`[seg.so] 分段 ${segmentIndex} 请求失败: ${detail}`);
+    throw err;
+  }
 }
 
 function tryParseDanmuSeg(buffer, segmentIndex) {
@@ -442,6 +457,14 @@ async function downloadImage(url, outputPath) {
 
 // ==================== API routes ====================
 
+app.get('/api/danmu/progress', (req, res) => {
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ error: '缺少视频ID' });
+  const cacheKey = id.toUpperCase().startsWith('BV') ? id : `ep${String(id).replace(/^ep/i, '')}`;
+  const progress = danmuProgressMap.get(cacheKey);
+  res.json(progress || null);
+});
+
 app.get('/api/danmu', async (req, res) => {
   try {
     const { id } = req.query;
@@ -463,23 +486,23 @@ app.get('/api/danmu', async (req, res) => {
     let strategy = requestedStrategy;
 
     if (requestedStrategy === 'seg.so') {
-      const segmentCount = Math.max(1, Math.ceil((videoMeta.duration || 0) / 360));
+      const segmentCount = Math.min(100, Math.max(1, Math.ceil((videoMeta.duration || 0) / 360)));
       console.log(`[seg.so] 开始加载弹幕，共 ${segmentCount} 个分段...`);
       console.time('[seg.so] 耗时');
 
-      const concurrency = 3;
+      danmuProgressMap.set(cacheKey, { current: 0, total: segmentCount, phase: 'loading' });
+
       const results = [];
-      for (let i = 0; i < segmentCount; i += concurrency) {
-        const batch = Array.from({ length: Math.min(concurrency, segmentCount - i) }, (_, j) => ({
-          index: i + j + 1,
-          promise: fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: i + j + 1 })
-        }));
-        const settled = await Promise.allSettled(batch.map(b => b.promise));
-        settled.forEach((r, j) => {
-          results[batch[j].index - 1] = r;
-        });
-        if (i + concurrency < segmentCount) {
-          await new Promise(resolve => setTimeout(resolve, 10));
+      for (let i = 1; i <= segmentCount; i++) {
+        try {
+          const buf = await fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: i });
+          results[i - 1] = { status: 'fulfilled', value: buf };
+        } catch (err) {
+          results[i - 1] = { status: 'rejected', reason: err };
+        }
+        danmuProgressMap.set(cacheKey, { current: i, total: segmentCount, phase: 'loading' });
+        if (i < segmentCount) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
 
@@ -499,9 +522,10 @@ app.get('/api/danmu', async (req, res) => {
       });
 
       if (retryIndices.length) {
-        console.log(`[seg.so] ${retryIndices.length} 个分段失败，1秒后重试...`);
+        danmuProgressMap.set(cacheKey, { current: 0, total: retryIndices.length, phase: 'retrying' });
+        console.log(`[seg.so] ${retryIndices.length} 个分段失败，等待5秒后重试...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
         for (const idx of retryIndices) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
           try {
             const buf = await fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: idx });
             const parsed = tryParseDanmuSeg(buf, idx);
@@ -512,11 +536,17 @@ app.get('/api/danmu', async (req, res) => {
               console.log(`[seg.so] 分段 ${idx} 重试仍然失败，已放弃`);
             }
           } catch (err) {
-            console.log(`[seg.so] 分段 ${idx} 重试异常:`, err.message);
+            const retryDetail = err.response ? ` status=${err.response.status} body=${Buffer.from(err.response.data || '').toString('utf-8').slice(0, 200)}` : '';
+            console.log(`[seg.so] 分段 ${idx} 重试异常: ${err.message}${retryDetail}`);
+          }
+          danmuProgressMap.set(cacheKey, { current: retryIndices.indexOf(idx) + 1, total: retryIndices.length, phase: 'retrying' });
+          if (idx < retryIndices[retryIndices.length - 1]) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
           }
         }
       }
 
+      danmuProgressMap.delete(cacheKey);
       console.timeEnd('[seg.so] 耗时');
       console.log(`[seg.so] 加载完成，共 ${danmus.length} 条弹幕`);
     } else {
@@ -532,6 +562,7 @@ app.get('/api/danmu', async (req, res) => {
     fs.writeFileSync(cacheFileFinal, JSON.stringify(result, null, 2));
     res.json(result);
   } catch (err) {
+    danmuProgressMap.delete(cacheKey);
     res.status(500).json({ error: err.message });
   }
 });
@@ -574,22 +605,65 @@ app.put('/api/config', (req, res) => {
 
 const FOLDERS_BASE = process.env.FOLDERS_BASE || path.join(os.homedir(), 'video');
 
+function scanFolders(baseDir, relativePath = '') {
+  let results = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(path.join(baseDir, relativePath), { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const rel = relativePath ? path.join(relativePath, entry.name) : entry.name;
+    results.push({
+      path: path.join(baseDir, rel),
+      name: rel
+    });
+    results = results.concat(scanFolders(baseDir, rel));
+  }
+  return results;
+}
+
 app.get('/api/folders', (req, res) => {
   try {
-    const entries = fs.readdirSync(FOLDERS_BASE, { withFileTypes: true });
     const folders = [{ path: FOLDERS_BASE, name: '(根目录)' }];
-    for (const entry of entries) {
-      if (entry.isDirectory() && !entry.name.startsWith('.')) {
-        folders.push({
-          path: path.join(FOLDERS_BASE, entry.name),
-          name: entry.name
-        });
-      }
-    }
+    folders.push(...scanFolders(FOLDERS_BASE));
     res.json(folders);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '读取文件夹列表失败' });
+  }
+});
+
+function scanVideoFiles(baseDir, relativePath = '') {
+  let results = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(path.join(baseDir, relativePath), { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const rel = relativePath ? path.join(relativePath, entry.name) : entry.name;
+    if (entry.isDirectory()) {
+      results = results.concat(scanVideoFiles(baseDir, rel));
+    } else if (isVideoExt(entry.name)) {
+      results.push({ path: path.join(baseDir, rel), name: rel });
+    }
+  }
+  return results;
+}
+
+app.get('/api/video-files', (req, res) => {
+  try {
+    const files = scanVideoFiles(FOLDERS_BASE);
+    files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
+    res.json(files);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '读取文件列表失败' });
   }
 });
 
@@ -838,6 +912,165 @@ app.post('/api/rename', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || '重命名失败' });
+  }
+});
+
+function saveConvertHistory(task) {
+  try {
+    let history = [];
+    if (fs.existsSync(CONVERT_HISTORY_FILE)) {
+      history = JSON.parse(fs.readFileSync(CONVERT_HISTORY_FILE, 'utf-8'));
+    }
+    history.unshift({
+      id: task.id,
+      input: task.input,
+      output: task.output,
+      status: task.status,
+      error: task.error || '',
+      progress: task.progress,
+      duration: task.duration,
+      startTime: task.startTime,
+      endTime: task.endTime
+    });
+    if (history.length > 50) history.length = 50;
+    fs.writeFileSync(CONVERT_HISTORY_FILE, JSON.stringify(history, null, 2));
+  } catch (err) {
+    console.error('保存转换历史失败:', err.message);
+  }
+}
+
+app.post('/api/convert', (req, res) => {
+  try {
+    const { filePath } = req.body;
+    if (!filePath || typeof filePath !== 'string') {
+      return res.status(400).json({ error: '缺少 filePath 参数' });
+    }
+    const resolvedPath = path.resolve(filePath);
+    if (!fs.existsSync(resolvedPath)) {
+      return res.status(400).json({ error: `文件不存在: ${resolvedPath}` });
+    }
+
+    const dir = path.dirname(resolvedPath);
+    const ext = path.extname(resolvedPath);
+    const base = path.basename(resolvedPath, ext);
+    const outputPath = path.join(dir, `${base}_browser.mp4`);
+
+    const taskId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const task = { id: taskId, input: resolvedPath, output: outputPath, status: 'probing', progress: 0, duration: 0, startTime: Date.now() };
+    convertTasks.set(taskId, task);
+
+    // 用 ffprobe 获取视频总时长
+    const probe = spawn('ffprobe', [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1', resolvedPath
+    ]);
+    let probeOutput = '';
+    probe.stdout.on('data', d => probeOutput += d.toString());
+    probe.on('close', (code) => {
+      if (code === 0) {
+        task.duration = Math.round(parseFloat(probeOutput.trim()) || 0);
+      }
+      task.status = 'running';
+      startFfmpeg(task);
+    });
+    probe.on('error', () => {
+      task.status = 'running';
+      startFfmpeg(task);
+    });
+
+    function startFfmpeg(task) {
+      const args = [
+        '-i', task.input,
+        '-c:v', 'h264_videotoolbox',
+        '-b:v', '5000k',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-movflags', '+faststart',
+        '-progress', 'pipe:1',
+        '-nostats',
+        '-y',
+        task.output
+      ];
+
+      console.log(`[convert] 开始转换: ${task.input} -> ${task.output}`);
+
+      const ffmpeg = spawn('ffmpeg', args);
+
+      let stderr = '';
+      ffmpeg.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      let lastProgress = '';
+      ffmpeg.stdout.on('data', (data) => {
+        lastProgress += data.toString();
+        const timeMatch = lastProgress.match(/out_time_us=(\d+)/);
+        if (timeMatch) {
+          lastProgress = '';
+          task.progress = Math.floor(Number(timeMatch[1]) / 1000000);
+        }
+      });
+
+      ffmpeg.on('close', (code) => {
+        task.endTime = Date.now();
+        if (code === 0) {
+          task.status = 'done';
+          console.log(`[convert] 完成: ${task.output}`);
+        } else {
+          task.status = 'error';
+          task.error = stderr.slice(-500);
+          console.error(`[convert] 失败: ${stderr.slice(-300)}`);
+        }
+        saveConvertHistory(task);
+      });
+
+      ffmpeg.on('error', (err) => {
+        task.status = 'error';
+        task.error = err.message;
+        task.endTime = Date.now();
+        saveConvertHistory(task);
+        console.error(`[convert] ffmpeg 启动失败:`, err.message);
+      });
+    }
+
+    res.json({ taskId, output: outputPath, duration: task.duration });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || '转换失败' });
+  }
+});
+
+app.get('/api/convert/status', (req, res) => {
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ error: '缺少任务ID' });
+  const task = convertTasks.get(id);
+  if (!task) {
+    // 任务不在内存中，尝试从历史文件查找
+    if (fs.existsSync(CONVERT_HISTORY_FILE)) {
+      const history = JSON.parse(fs.readFileSync(CONVERT_HISTORY_FILE, 'utf-8'));
+      const found = history.find(t => t.id === id);
+      if (found) return res.json(found);
+    }
+    return res.status(404).json({ error: '任务不存在' });
+  }
+  res.json(task);
+});
+
+app.get('/api/convert/history', (req, res) => {
+  try {
+    const running = [];
+    for (const t of convertTasks.values()) {
+      if (t.status === 'running' || t.status === 'probing') {
+        running.push(t);
+      }
+    }
+    let history = [];
+    if (fs.existsSync(CONVERT_HISTORY_FILE)) {
+      history = JSON.parse(fs.readFileSync(CONVERT_HISTORY_FILE, 'utf-8'));
+    }
+    res.json([...running, ...history].slice(0, 20));
+  } catch (err) {
+    res.json([]);
   }
 });
 

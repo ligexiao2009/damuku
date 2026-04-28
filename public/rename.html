@@ -32,17 +32,20 @@
       margin-bottom: 8px;
     }
 
-    input {
+    input, select {
       width: 100%;
       padding: 12px;
       border: none;
       border-radius: 8px;
       font-size: 14px;
+      background: #2b2f3a;
+      color: white;
+      box-sizing: border-box;
     }
 
     .row {
       display: grid;
-      grid-template-columns: 1fr 150px;
+      grid-template-columns: 1fr 200px;
       gap: 10px;
       align-items: center;
     }
@@ -84,20 +87,57 @@
       width: 100%;
       background: #2b2f3a;
     }
+
+    .card + .card {
+      margin-top: 20px;
+    }
+
+    .status-bar-inline {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: #2b2f3a;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 20px;
+    }
+
+    .status-bar-inline .done { color: #4ade80; }
+    .status-bar-inline .error { color: #f87171; }
+    .status-bar-inline .running { color: #facc15; }
+
+    .progress-wrap {
+      margin-top: 8px;
+      height: 6px;
+      background: #2b2f3a;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      border-radius: 3px;
+      transition: width 0.5s ease;
+    }
   </style>
 </head>
 
 <body>
-  <h1>B站剧集批量重命名工具</h1>
+  <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap;">
+    <h1 style="margin:0;">B站剧集批量重命名工具</h1>
+    <button onclick="location.href='/video.html'" style="margin:0; width:auto; padding:8px 20px; font-size:14px; background:#2b2f3a;">主页</button>
+  </div>
 
   <div class="card">
-    <label>本地视频文件夹路径（完整路径）</label>
+    <label>本地视频文件夹路径</label>
     <div class="row">
       <input type="text" id="folderPath" placeholder="例如 /Users/yang/Downloads/长安的荔枝">
-      <button type="button" id="pickFolderBtn" class="secondary-btn">选择文件夹</button>
+      <select id="folderSelect">
+        <option value="">-- 加载中... --</option>
+      </select>
     </div>
-    <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
-    <div class="hint" id="folderHint">浏览器安全限制下，无法自动读取你电脑里的真实完整路径；选择文件夹后这里只会帮你识别目录名，完整路径仍需手动确认。</div>
+    <div class="hint" id="folderHint">从右侧下拉框选择服务器目录可自动填入路径，也可手动输入。</div>
 
     <label>B站任意剧集链接（ep链接）</label>
     <input type="text" id="biliUrl" placeholder="例如 https://www.bilibili.com/bangumi/play/ep473314">
@@ -107,40 +147,185 @@
     <pre id="result">等待操作...</pre>
   </div>
 
+  <div class="card">
+    <h2 style="margin:0 0 8px; font-size:18px;">视频转换</h2>
+    <label>视频文件路径</label>
+    <div class="row">
+      <input type="text" id="convertFilePath" placeholder="例如 /Users/yang/video/视频.mkv">
+      <select id="convertFolderSelect">
+        <option value="">-- 加载中... --</option>
+      </select>
+    </div>
+    <div class="hint">从右侧下拉框选择视频文件自动填入路径。输出文件在同目录下，文件名加 _browser.mp4 后缀。</div>
+
+    <button id="convertBtn">开始转换</button>
+    <div class="status-bar-inline" id="convertStatus" style="display:none;"></div>
+  </div>
+
   <script>
     const renameBtn = document.getElementById('renameBtn');
     const resultBox = document.getElementById('result');
     const folderPathInput = document.getElementById('folderPath');
-    const pickFolderBtn = document.getElementById('pickFolderBtn');
-    const folderPicker = document.getElementById('folderPicker');
-    const folderHint = document.getElementById('folderHint');
+    const folderSelect = document.getElementById('folderSelect');
 
-    function inferFolderName(files) {
-      const firstFile = files[0];
-      if (!firstFile) return '';
-      const relativePath = firstFile.webkitRelativePath || '';
-      return relativePath.split('/')[0] || '';
+    async function loadFolders() {
+      try {
+        const res = await fetch('/api/folders');
+        const folders = await res.json();
+        folderSelect.innerHTML = '<option value=””>-- 请选择目录 --</option>';
+        if (!folders || folders.length === 0) {
+          folderSelect.innerHTML = '<option value=””>-- 无可用目录 --</option>';
+          return;
+        }
+        folders.forEach(f => {
+          const opt = document.createElement('option');
+          opt.value = f.path;
+          opt.textContent = f.name;
+          folderSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('获取文件夹列表失败:', err);
+        folderSelect.innerHTML = '<option value=””>-- 加载失败 --</option>';
+      }
     }
 
-    pickFolderBtn.addEventListener('click', () => {
-      folderPicker.click();
+    folderSelect.addEventListener('change', () => {
+      const dir = folderSelect.value;
+      if (dir) folderPathInput.value = dir;
     });
 
-    folderPicker.addEventListener('change', () => {
-      const files = Array.from(folderPicker.files || []);
-      const folderName = inferFolderName(files);
+    loadFolders();
 
-      if (!folderName) {
-        folderHint.textContent = '没有从所选内容里识别到文件夹名，你仍然可以手动填写完整路径。';
-        return;
+    const convertBtn = document.getElementById('convertBtn');
+    const convertFilePathInput = document.getElementById('convertFilePath');
+    const convertFolderSelect = document.getElementById('convertFolderSelect');
+    const convertStatus = document.getElementById('convertStatus');
+
+    async function loadConvertFolders() {
+      try {
+        const res = await fetch('/api/video-files');
+        const files = await res.json();
+        convertFolderSelect.innerHTML = '<option value="">-- 请选择视频文件 --</option>';
+        if (!files || files.length === 0) {
+          convertFolderSelect.innerHTML = '<option value="">-- 无视频文件 --</option>';
+          return;
+        }
+        files.forEach(f => {
+          const opt = document.createElement('option');
+          opt.value = f.path;
+          opt.textContent = f.name;
+          convertFolderSelect.appendChild(opt);
+        });
+      } catch (err) {
+        convertFolderSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
       }
+    }
 
-      if (!folderPathInput.value.trim()) {
-        folderPathInput.value = folderName;
-      }
-
-      folderHint.textContent = `已选择文件夹“${folderName}”。浏览器仍然拿不到真实绝对路径，如果接口需要像 /Users/yang/... 这样的完整路径，请把输入框改成你本机的实际路径。`;
+    convertFolderSelect.addEventListener('change', () => {
+      const filePath = convertFolderSelect.value;
+      if (filePath) convertFilePathInput.value = filePath;
     });
+
+    loadConvertFolders();
+
+    let pollingTimer = null;
+
+    async function loadConvertHistory() {
+      try {
+        const res = await fetch('/api/convert/history');
+        const history = await res.json();
+        if (!history || history.length === 0) return;
+
+        const last = history[0];
+        if (last.status === 'running' || last.status === 'probing') {
+          convertBtn.disabled = true;
+          convertStatus.style.display = 'block';
+          startPolling(last.id);
+        } else if (last.status === 'done') {
+          const elapsed = last.endTime ? Math.round((last.endTime - last.startTime) / 1000) : 0;
+          convertStatus.style.display = 'block';
+          convertStatus.innerHTML = `<span class="done">上次转换完成，耗时 ${formatTime(elapsed)}: ${escapeHtml(last.output)}</span>`;
+        } else if (last.status === 'error') {
+          convertStatus.style.display = 'block';
+          convertStatus.innerHTML = `<span class="error">上次转换失败: ${escapeHtml(last.error || '未知错误')}</span>`;
+        }
+      } catch {}
+    }
+
+    function startPolling(taskId) {
+      if (pollingTimer) clearInterval(pollingTimer);
+      pollingTimer = setInterval(async () => {
+        try {
+          const sr = await fetch(`/api/convert/status?id=${encodeURIComponent(taskId)}`);
+          const st = await sr.json();
+          if (st.status === 'done') {
+            clearInterval(pollingTimer);
+            const elapsed = st.endTime ? Math.round((st.endTime - st.startTime) / 1000) : 0;
+            convertStatus.innerHTML = `<span class="done">转换完成，耗时 ${formatTime(elapsed)}: ${escapeHtml(st.output)}</span>`;
+            convertBtn.disabled = false;
+          } else if (st.status === 'error') {
+            clearInterval(pollingTimer);
+            convertStatus.innerHTML = `<span class="error">转换失败: ${escapeHtml(st.error || '未知错误')}</span>`;
+            convertBtn.disabled = false;
+          } else if (st.status === 'probing') {
+            convertStatus.innerHTML = '<span class="running">正在获取视频信息...</span>';
+          } else {
+            const cur = formatTime(st.progress || 0);
+            const pct = st.duration ? Math.min(100, Math.round((st.progress / st.duration) * 100)) : 0;
+            const total = formatTime(st.duration || 0);
+            const bar = st.duration ? `<div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>` : '';
+            convertStatus.innerHTML = `<span class="running">正在转换 ${pct}% (${cur} / ${total})</span>${bar}`;
+          }
+        } catch {
+          clearInterval(pollingTimer);
+          convertStatus.innerHTML = '<span class="error">状态查询失败</span>';
+          convertBtn.disabled = false;
+        }
+      }, 1000);
+    }
+
+    loadConvertHistory();
+
+    convertBtn.addEventListener('click', async () => {
+      const filePath = convertFilePathInput.value.trim();
+      if (!filePath) return alert('请输入视频文件路径');
+
+      convertBtn.disabled = true;
+      convertStatus.style.display = 'block';
+      convertStatus.innerHTML = '<span class="running">正在获取视频信息...</span>';
+
+      try {
+        const res = await fetch('/api/convert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '启动转换失败');
+
+        startPolling(data.taskId);
+      } catch (err) {
+        convertStatus.innerHTML = `<span class="error">${escapeHtml(err.message)}</span>`;
+        convertBtn.disabled = false;
+      }
+    });
+
+    function formatTime(seconds) {
+      if (!seconds || seconds <= 0) return '0秒';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      if (h > 0) return `${h}时${m}分${s}秒`;
+      if (m > 0) return `${m}分${s}秒`;
+      return `${s}秒`;
+    }
+
+    function escapeHtml(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
 
     renameBtn.addEventListener('click', async () => {
       const folderPath = folderPathInput.value.trim();

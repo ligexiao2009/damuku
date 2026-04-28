@@ -432,3 +432,6 @@ Node.js 服务端
 ---
 
 如继续升级，可逐步发展为完整私人媒体服务器。
+---
+## 视频转换mkv-mp4
+ffmpeg -i "初恋这件小事_ep236563.mkv" -c:v h264_videotoolbox -b:v 5000k -c:a aac -b:a 192k -movflags +faststart "初恋这件小事_ep236563_browser.mp4"

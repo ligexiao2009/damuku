@@ -190,13 +190,9 @@
 
     #prevVideoBtn,
     #nextVideoBtn,
-    #pickFolderBtn {
+    #pickFolderBtn,
+    #renamePageBtn {
       background: linear-gradient(135deg, #293549 0%, #1b2433 100%);
-      box-shadow: none;
-    }
-
-    #loadServerFilesBtn {
-      background: linear-gradient(135deg, #0078d7 0%, #005a9e 100%);
       box-shadow: none;
     }
 
@@ -567,20 +563,61 @@
       }
     }
 
+    .toast-container {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      max-width: 360px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: rgba(20, 29, 41, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+      animation: toastIn 0.3s ease;
+      pointer-events: auto;
+    }
+
+    .toast.removing {
+      animation: toastOut 0.25s ease forwards;
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(40px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes toastOut {
+      from { opacity: 1; transform: translateX(0); }
+      to { opacity: 0; transform: translateX(40px); }
+    }
+
   </style>
 </head>
 
 <body>
+  <div class="toast-container" id="toastContainer"></div>
   <main class="page">
     <section class="workspace">
       <div class="controls">
         <input type="file" id="videoFile" accept="video/*" multiple>
         <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
         <button id="pickFolderBtn">选择文件夹</button>
-        <button id="loadServerFilesBtn">获取服务器视频</button>
         <input type="text" id="bvidInput" placeholder="输入BV号或ep号">
         <button id="fullScreenBtn">全屏播放</button>
         <button id="toggleSettingsBtn">弹幕设置</button>
+        <button id="renamePageBtn">tools</button>
         <div class="settings-row hidden">
           <div class="setting-group">
             <label for="speedControl">弹幕速度</label>
@@ -652,12 +689,12 @@
     const videoFile = document.getElementById('videoFile');
     const folderPicker = document.getElementById('folderPicker');
     const pickFolderBtn = document.getElementById('pickFolderBtn');
-    const loadServerFilesBtn = document.getElementById('loadServerFilesBtn');
     const folderSelect = document.getElementById('folderSelect');
     const loadDanmuBtn = document.getElementById('loadDanmu');
     const refreshDanmuBtn = document.getElementById('refreshDanmuBtn');
     const toggleStatusBtn = document.getElementById('toggleStatusBtn');
     const toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
+    const renamePageBtn = document.getElementById('renamePageBtn');
     const fullScreenBtn = document.getElementById('fullScreenBtn');
     const prevVideoBtn = document.getElementById('prevVideoBtn');
     const nextVideoBtn = document.getElementById('nextVideoBtn');
@@ -682,6 +719,29 @@
     const statusPlaylist = document.getElementById('statusPlaylist');
     const statusFile = document.getElementById('statusFile');
     const statusBar = document.getElementById('statusBar');
+    const toastContainer = document.getElementById('toastContainer');
+
+    function toast(msg, duration = 3000) {
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.textContent = msg;
+      toastContainer.appendChild(el);
+      let timer;
+      if (duration > 0) {
+        timer = setTimeout(() => dismissToast(el), duration);
+      }
+      el.addEventListener('click', () => {
+        clearTimeout(timer);
+        dismissToast(el);
+      });
+      return el;
+    }
+
+    function dismissToast(el) {
+      if (!el || el.classList.contains('removing')) return;
+      el.classList.add('removing');
+      el.addEventListener('animationend', () => el.remove());
+    }
 
     const playbackMemoryKey = 'b-video-playback-memory';
     const danmuSettingsKey = 'b-video-danmu-settings';
@@ -1234,7 +1294,7 @@
     function loadFilesIntoPlaylist(files, preferredFileName = '') {
       const videoFiles = naturalSortValues(files).filter(isVideoFile);
       if (!videoFiles.length) {
-        alert('没有找到可播放的视频文件');
+        toast('没有找到可播放的视频文件');
         return;
       }
 
@@ -1264,7 +1324,7 @@
     function appendFilesToPlaylist(files) {
       const videoFiles = naturalSortValues(files).filter(isVideoFile);
       if (!videoFiles.length) {
-        alert('没有找到可播放的视频文件');
+        toast('没有找到可播放的视频文件');
         return;
       }
 
@@ -1281,7 +1341,7 @@
         }));
 
       if (!newItems.length) {
-        alert('这些文件已经在播放列表里了');
+        toast('这些文件已经在播放列表里了');
         return;
       }
 
@@ -1293,9 +1353,21 @@
 
     async function applyDanmuForVideoId(videoId, { showAlert = true, forceRefresh = false } = {}) {
       if (!videoId) {
-        if (showAlert) alert('请输入BV号或ep号');
+        if (showAlert) toast('请输入BV号或ep号');
         return false;
       }
+
+      const loadingToast = toast('正在加载弹幕...', 0);
+      const progressTimer = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/danmu/progress?id=${encodeURIComponent(videoId)}`);
+          const p = await r.json();
+          if (p) {
+            const phase = p.phase === 'retrying' ? '重试' : '加载';
+            loadingToast.textContent = `正在${phase}弹幕... ${p.current}/${p.total}`;
+          }
+        } catch {}
+      }, 800);
 
       try {
         const params = new URLSearchParams({ id: videoId, strategy: strategySelect.value });
@@ -1310,14 +1382,18 @@
         clearDanmu();
         updateStatusBar({ count: data.count, fromCache: data.fromCache, forceRefresh: data.forceRefresh });
 
-        if (showAlert) alert(`已加载 ${danmus.length} 条弹幕`);
+        clearInterval(progressTimer);
+        dismissToast(loadingToast);
+        if (showAlert) toast(`已加载 ${danmus.length} 条弹幕`);
         return true;
       } catch (error) {
         danmus = [];
         danmuIndex = 0;
         clearDanmu();
         updateStatusBar({ count: 0, fromCache: false, forceRefresh });
-        if (showAlert) alert(error.message || '弹幕加载失败');
+        clearInterval(progressTimer);
+        dismissToast(loadingToast);
+        if (showAlert) toast(error.message || '弹幕加载失败');
         return false;
       }
     }
@@ -1370,15 +1446,13 @@
       return true;
     }
 
-    loadServerFilesBtn.addEventListener('click', loadServerVideos);
-
     async function loadServerVideos() {
       try {
         const res = await fetch('/api/videos');
         const fileNames = await res.json();
 
         if (!fileNames || fileNames.length === 0) {
-          return alert('服务器当前目录下没有找到视频文件！');
+          return toast('服务器当前目录下没有找到视频文件！');
         }
 
         currentPlaylist = naturalSortValues(fileNames).map(name => ({
@@ -1399,7 +1473,7 @@
         playFileAtIndex(0);
       } catch (err) {
         console.error('获取服务器视频列表失败:', err);
-        alert('获取服务器视频列表失败，请检查 Node.js 服务是否正常启动。');
+        toast('获取服务器视频列表失败，请检查 Node.js 服务是否正常启动。');
       }
     }
 
@@ -1435,12 +1509,12 @@
         });
         if (!res.ok) {
           const data = await res.json();
-          return alert(data.error || '切换目录失败');
+          return toast(data.error || '切换目录失败');
         }
         await loadServerVideos();
       } catch (err) {
         console.error('切换目录失败:', err);
-        alert('切换目录失败');
+        toast('切换目录失败');
       }
     });
 
@@ -1476,7 +1550,7 @@
       const item = currentPlaylist[currentPlaylistIndex];
       const fileName = item ? getPlaylistLabel(item) : currentVideoName;
       updateStatusBar({ count: 0, fromCache: null, forceRefresh: false, fileName });
-      alert(`${fileName} 无法播放。\n\n${getVideoErrorMessage()}\n\n请尝试在 Safari 中播放或将视频转码为 H.264 MP4 格式。`);
+      toast(`${fileName} 无法播放。\n\n${getVideoErrorMessage()}\n\n请尝试在 Safari 中播放或将视频转码为 H.264 MP4 格式。`, 6000);
     });
 
     video.addEventListener('play', startDanmuLoop);
@@ -1525,9 +1599,13 @@
       row.classList.toggle('hidden');
     });
 
+    renamePageBtn.addEventListener('click', () => {
+      window.open('/rename.html', '_blank');
+    });
+
     fullScreenBtn.addEventListener('click', () => {
       if (!document.fullscreenElement) {
-        player.requestFullscreen().catch(err => alert(`全屏失败: ${err.message}`));
+        player.requestFullscreen().catch(err => toast(`全屏失败: ${err.message}`));
       } else {
         document.exitFullscreen().catch(() => {});
       }
