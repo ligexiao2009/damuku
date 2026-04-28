@@ -310,45 +310,45 @@
 
     .settings-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: repeat(3, minmax(min-content, 1fr));
       gap: 4px;
-      min-width: 0;
+    }
+
+    .settings-row.hidden {
+      display: none;
     }
 
     .setting-group {
-      display: grid;
-      grid-template-columns: 30px minmax(0, 1fr) 28px;
+      display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 4px;
+      gap: 2px 4px;
       min-height: 30px;
       background: var(--panel-soft);
       padding: 4px 6px;
       border-radius: 9px;
       border: 1px solid rgba(255, 255, 255, 0.06);
-      min-width: 0;
     }
 
     .setting-group label {
-      width: auto;
-      min-width: 0;
       font-size: 9px;
       color: var(--muted);
       white-space: nowrap;
     }
 
     .setting-group input[type="range"] {
+      flex: 1 1 0;
       min-width: 0;
       padding: 0;
-      width: 100%;
       accent-color: var(--accent);
     }
 
     .setting-value {
-      min-width: 0;
       font-size: 9px;
       color: var(--text);
       text-align: right;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     .player-container {
@@ -553,7 +553,8 @@
         <button id="refreshDanmuBtn">刷新弹幕</button>
         <button id="toggleStatusBtn">状态栏</button>
         <button id="fullScreenBtn">全屏播放</button>
-        <div class="settings-row">
+        <button id="toggleSettingsBtn">弹幕设置</button>
+        <div class="settings-row hidden">
           <div class="setting-group">
             <label for="speedControl">弹幕速度</label>
             <input type="range" id="speedControl" min="8" max="40" value="20" step="1">
@@ -566,7 +567,7 @@
           </div>
           <div class="setting-group">
             <label for="offsetControl">弹幕偏移</label>
-            <input type="range" id="offsetControl" min="-10" max="10" value="0" step="0.5">
+            <input type="range" id="offsetControl" min="-120" max="120" value="0" step="1">
             <span class="setting-value" id="offsetValue">0秒</span>
           </div>
         </div>
@@ -620,6 +621,7 @@
     const loadDanmuBtn = document.getElementById('loadDanmu');
     const refreshDanmuBtn = document.getElementById('refreshDanmuBtn');
     const toggleStatusBtn = document.getElementById('toggleStatusBtn');
+    const toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
     const fullScreenBtn = document.getElementById('fullScreenBtn');
     const prevVideoBtn = document.getElementById('prevVideoBtn');
     const nextVideoBtn = document.getElementById('nextVideoBtn');
@@ -1387,6 +1389,11 @@
 
     toggleStatusBtn.addEventListener('click', () => setStatusBarVisible(statusBar.classList.contains('hidden')));
 
+    toggleSettingsBtn.addEventListener('click', () => {
+      const row = document.querySelector('.settings-row');
+      row.classList.toggle('hidden');
+    });
+
     fullScreenBtn.addEventListener('click', () => {
       if (!document.fullscreenElement) {
         player.requestFullscreen().catch(err => alert(`全屏失败: ${err.message}`));
@@ -1412,6 +1419,10 @@
       if (video.paused) video.play().catch(() => {});
       else video.pause();
     });
+
+    speedControl.addEventListener('input', updateDanmuSettings);
+    areaControl.addEventListener('input', updateDanmuSettings);
+    offsetControl.addEventListener('input', updateDanmuSettings);
 
     window.addEventListener('resize', updatePlayerSize);
     document.addEventListener('fullscreenchange', updatePlayerSize);
