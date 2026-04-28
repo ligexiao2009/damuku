@@ -1076,12 +1076,7 @@
           img.src = item.isRemote ? placeholderThumb : placeholderLocalThumb;
         };
 
-        const badge = document.createElement('span');
-        badge.className = 'playlist-thumb-badge';
-        badge.textContent = item.isRemote ? '服务器' : '本地';
-
         thumbWrap.appendChild(img);
-        thumbWrap.appendChild(badge);
 
         const body = document.createElement('div');
         body.className = 'playlist-item-body';
@@ -1092,7 +1087,7 @@
 
         const meta = document.createElement('div');
         meta.className = 'playlist-item-meta';
-        meta.textContent = `${item.isRemote ? '[服务端视频]' : formatFileSize(item.file.size)}${item.videoId ? ` · ${item.videoId}` : ''}`;
+        meta.textContent = `${item.isRemote ? '' : formatFileSize(item.file.size)}${item.videoId ? ` · ${item.videoId}` : ''}`;
 
         body.appendChild(name);
         body.appendChild(meta);
