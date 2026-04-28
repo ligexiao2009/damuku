@@ -981,6 +981,8 @@ app.post('/api/convert', (req, res) => {
     function startFfmpeg(task) {
       const args = [
         '-i', task.input,
+        '-map', '0:v:0',
+        '-map', '0:a:0',
         '-c:v', 'h264_videotoolbox',
         '-b:v', '5000k',
         '-c:a', 'aac',
