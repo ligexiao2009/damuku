@@ -26,6 +26,24 @@ for (const dir of [CACHE_DIR, PLAYBACK_DIR, DANMU_DIR, THUMB_DIR, META_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+// 恢复中断的转换任务（服务器重启后标记为 interrupted）
+if (fs.existsSync(CONVERT_HISTORY_FILE)) {
+  try {
+    const history = JSON.parse(fs.readFileSync(CONVERT_HISTORY_FILE, 'utf-8'));
+    let changed = false;
+    for (const t of history) {
+      if (t.status === 'running' || t.status === 'probing') {
+        t.status = 'interrupted';
+        changed = true;
+      }
+    }
+    if (changed) {
+      fs.writeFileSync(CONVERT_HISTORY_FILE, JSON.stringify(history, null, 2));
+      console.log('[convert] 标记了中断的转换任务');
+    }
+  } catch {}
+}
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
@@ -625,10 +643,20 @@ function scanFolders(baseDir, relativePath = '') {
   return results;
 }
 
+function hasDirectVideoFiles(dirPath) {
+  try {
+    return fs.readdirSync(dirPath, { withFileTypes: true }).some(e => e.isFile() && isVideoExt(e.name));
+  } catch {
+    return false;
+  }
+}
+
 app.get('/api/folders', (req, res) => {
   try {
-    const folders = [{ path: FOLDERS_BASE, name: '(根目录)' }];
-    folders.push(...scanFolders(FOLDERS_BASE));
+    const allFolders = scanFolders(FOLDERS_BASE);
+    // 只保留直接包含视频文件的目录（不递归子目录）
+    const folders = [{ path: FOLDERS_BASE, name: '(根目录)' }]
+      .concat(allFolders.filter(f => hasDirectVideoFiles(f.path)));
     res.json(folders);
   } catch (err) {
     console.error(err);
@@ -958,6 +986,7 @@ app.post('/api/convert', (req, res) => {
     const taskId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const task = { id: taskId, input: resolvedPath, output: outputPath, status: 'probing', progress: 0, duration: 0, startTime: Date.now() };
     convertTasks.set(taskId, task);
+    saveConvertHistory(task);
 
     // 用 ffprobe 获取视频总时长
     const probe = spawn('ffprobe', [

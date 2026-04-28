@@ -243,6 +243,10 @@
           convertBtn.disabled = true;
           convertStatus.style.display = 'block';
           startPolling(last.id);
+        } else if (last.status === 'interrupted') {
+          convertStatus.style.display = 'block';
+          convertFilePathInput.value = last.input || '';
+          convertStatus.innerHTML = `<span class="error">上次转换中断（服务器重启），可重新提交: ${escapeHtml(last.input)}</span>`;
         } else if (last.status === 'done') {
           const elapsed = last.endTime ? Math.round((last.endTime - last.startTime) / 1000) : 0;
           convertStatus.style.display = 'block';
@@ -260,7 +264,12 @@
         try {
           const sr = await fetch(`/api/convert/status?id=${encodeURIComponent(taskId)}`);
           const st = await sr.json();
-          if (st.status === 'done') {
+          if (st.status === 'interrupted') {
+            clearInterval(pollingTimer);
+            convertFilePathInput.value = st.input || '';
+            convertStatus.innerHTML = `<span class="error">转换已中断（服务器重启），可重新提交: ${escapeHtml(st.input)}</span>`;
+            convertBtn.disabled = false;
+          } else if (st.status === 'done') {
             clearInterval(pollingTimer);
             const elapsed = st.endTime ? Math.round((st.endTime - st.startTime) / 1000) : 0;
             convertStatus.innerHTML = `<span class="done">转换完成，耗时 ${formatTime(elapsed)}: ${escapeHtml(st.output)}</span>`;
