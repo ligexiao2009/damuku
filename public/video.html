@@ -284,14 +284,41 @@
       grid-template-columns: 110px minmax(0, 1fr);
       align-items: stretch;
       gap: 10px;
+      -webkit-appearance: none;
+      appearance: none;
     }
 
-    .playlist-item:hover {
-      transform: none;
-      box-shadow: none;
-      filter: none;
-      border-color: rgba(255, 255, 255, 0.12);
-      background: rgba(255, 255, 255, 0.08);
+    .playlist-thumb-wrap {
+      position: relative;
+      width: 100%;
+      min-width: 0;
+      height: 0;
+      padding-bottom: 56.25%;
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .playlist-thumb {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 12px;
+    }
+
+    @media (hover: hover) {
+      .playlist-item:hover {
+        transform: none;
+        box-shadow: none;
+        filter: none;
+        border-color: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.08);
+      }
     }
 
     .playlist-item.active {
@@ -321,24 +348,6 @@
       align-content: center;
       gap: 6px;
       min-width: 0;
-    }
-
-    .playlist-thumb-wrap {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      border-radius: 12px;
-      overflow: hidden;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      flex-shrink: 0;
-    }
-
-    .playlist-thumb {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
     }
 
     .playlist-thumb-badge {
@@ -375,7 +384,12 @@
       backdrop-filter: blur(6px);
     }
 
-    .playlist-item:hover .playlist-item-delete,
+    @media (hover: hover) {
+      .playlist-item:hover .playlist-item-delete {
+        opacity: 1;
+      }
+    }
+
     .playlist-item:focus-within .playlist-item-delete {
       opacity: 1;
     }
@@ -671,8 +685,8 @@
               <div class="playlist-meta" id="playlistMeta">未加载文件</div>
             </div>
             <div>
-              <button id="prevVideoBtn" type="button">上一集</button>
-              <button id="nextVideoBtn" type="button">下一集</button>
+              <button id="prevVideoBtn" type="button">上一页</button>
+              <button id="nextVideoBtn" type="button">下一页</button>
             </div>
           </div>
           <select id="folderSelect" title="服务器视频目录" style="width:100%; margin-bottom:8px;"></select>
@@ -763,6 +777,7 @@
     let currentPlaylist = [];
     let currentPlaylistIndex = -1;
     let currentObjectUrl = '';
+    const PAGE_SIZE = 5;
 
     let layerW = 0;
     let layerH = 0;
@@ -995,16 +1010,24 @@
       statusCache.textContent = fromCache == null ? '未加载' : (fromCache ? '命中' : '重拉');
       statusRefresh.textContent = forceRefresh ? '是' : '否';
       statusOffset.textContent = `${danmuOffset > 0 ? '+' : ''}${danmuOffset}秒`;
-      statusPlaylist.textContent = currentPlaylist.length ? `${currentPlaylistIndex + 1} / ${currentPlaylist.length}` : '0 / 0';
+      const cPage = getCurrentPage();
+      const cTotal = Math.ceil(currentPlaylist.length / PAGE_SIZE);
+      statusPlaylist.textContent = currentPlaylist.length ? `${currentPlaylistIndex + 1}/${currentPlaylist.length} p${cPage + 1}/${cTotal}` : '0 / 0';
       updatePlaybackStatus();
 
       if (fileName) currentVideoName = fileName;
       statusFile.textContent = safeDisplayName(currentVideoName);
     }
 
+    function getCurrentPage() {
+      return currentPlaylistIndex < 0 ? 0 : Math.floor(currentPlaylistIndex / PAGE_SIZE);
+    }
+
     function updatePlaylistControls() {
-      prevVideoBtn.disabled = currentPlaylistIndex <= 0;
-      nextVideoBtn.disabled = currentPlaylistIndex < 0 || currentPlaylistIndex >= currentPlaylist.length - 1;
+      const page = getCurrentPage();
+      const totalPages = Math.max(1, Math.ceil(currentPlaylist.length / PAGE_SIZE));
+      prevVideoBtn.disabled = page <= 0;
+      nextVideoBtn.disabled = page >= totalPages - 1;
     }
 
     function getVideoErrorMessage() {
@@ -1178,9 +1201,14 @@
         return;
       }
 
-      playlistMeta.textContent = `共 ${currentPlaylist.length} 个视频`;
+      const page = getCurrentPage();
+      const totalPages = Math.ceil(currentPlaylist.length / PAGE_SIZE);
+      const start = page * PAGE_SIZE;
+      const end = Math.min(start + PAGE_SIZE, currentPlaylist.length);
+      playlistMeta.textContent = `共 ${currentPlaylist.length} 个 · 第 ${page + 1}/${totalPages} 页`;
 
-      currentPlaylist.forEach((item, index) => {
+      for (let index = start; index < end; index++) {
+        const item = currentPlaylist[index];
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `playlist-item${index === currentPlaylistIndex ? ' active' : ''}`;
@@ -1229,7 +1257,7 @@
         button.addEventListener('click', () => playFileAtIndex(index));
 
         playlist.appendChild(button);
-      });
+      }
 
       updatePlaylistControls();
       updateStatusBar();
@@ -1585,11 +1613,14 @@
     refreshDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim(), { forceRefresh: true }));
 
     prevVideoBtn.addEventListener('click', () => {
-      if (currentPlaylistIndex > 0) playFileAtIndex(currentPlaylistIndex - 1);
+      const page = getCurrentPage();
+      if (page > 0) playFileAtIndex((page - 1) * PAGE_SIZE);
     });
 
     nextVideoBtn.addEventListener('click', () => {
-      if (currentPlaylistIndex < currentPlaylist.length - 1) playFileAtIndex(currentPlaylistIndex + 1);
+      const page = getCurrentPage();
+      const totalPages = Math.ceil(currentPlaylist.length / PAGE_SIZE);
+      if (page < totalPages - 1) playFileAtIndex((page + 1) * PAGE_SIZE);
     });
 
     toggleStatusBtn.addEventListener('click', () => setStatusBarVisible(statusBar.classList.contains('hidden')));

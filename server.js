@@ -370,16 +370,21 @@ function transcodeStream(videoPath, req, res) {
   });
 
   const ffmpegArgs = [
+    '-hwaccel', 'videotoolbox',
     '-i', videoPath,
-    '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-crf', '23',
+    '-c:v', 'h264_videotoolbox',
+    '-b:v', '6000k',
+    // 尝试在硬件层强制指定输出色彩空间
+    '-color_primaries', 'bt709',
+    '-color_trc', 'bt709',
+    '-colorspace', 'bt709',
+    '-pix_fmt', 'yuv420p', 
     '-c:a', 'aac',
     '-b:a', '128k',
     '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
     '-f', 'mp4',
     'pipe:1'
-  ];
+];
 
   const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -801,12 +806,14 @@ app.get('/video/:name', (req, res) => {
   }
 });
 
+// stream接口兼容之前的请求方式，支持查询参数name指定视频文件
 app.get('/stream', (req, res) => {
   try {
     const fileName = decodeSafe(String(req.query.name || ''));
     if (!fileName) return res.status(400).send('缺少文件名');
 
     const videoPath = resolveVideoPath(fileName);
+    console.log('Streaming video:', videoPath);
 
     if (!fs.existsSync(videoPath)) {
       return res.status(404).send('文件不存在');
