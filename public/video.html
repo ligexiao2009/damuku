@@ -286,6 +286,9 @@
       gap: 10px;
       -webkit-appearance: none;
       appearance: none;
+      /* 修复：添加过渡效果并修正换行，以防继承问题 */
+      transition: all 0.2s ease;
+      white-space: normal;
     }
 
     .playlist-thumb-wrap {
@@ -298,6 +301,9 @@
       overflow: hidden;
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.08);
+      /* 修复：防止 Safari 在圆角 + absolute 时的渲染溢出和重绘问题 */
+      transform: translateZ(0);
+      -webkit-mask-image: -webkit-radial-gradient(white, black);
     }
 
     .playlist-thumb {
@@ -1209,8 +1215,11 @@
 
       for (let index = start; index < end; index++) {
         const item = currentPlaylist[index];
-        const button = document.createElement('button');
-        button.type = 'button';
+        
+        // 修复 Safari 的 Bug: 把外层包裹由 button 换成了 div
+        const button = document.createElement('div');
+        button.role = 'button'; // 依然保留无障碍属性
+        button.tabIndex = 0;    // 允许通过键盘选中
         button.className = `playlist-item${index === currentPlaylistIndex ? ' active' : ''}`;
 
         const thumbWrap = document.createElement('div');
@@ -1254,7 +1263,15 @@
         button.appendChild(thumbWrap);
         button.appendChild(body);
         button.appendChild(delBtn);
+        
+        // 添加键盘确认支持以完美模拟 button
         button.addEventListener('click', () => playFileAtIndex(index));
+        button.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            playFileAtIndex(index);
+          }
+        });
 
         playlist.appendChild(button);
       }
@@ -1262,7 +1279,6 @@
       updatePlaylistControls();
       updateStatusBar();
 
-      // ====== 新增：自动滚动到当前选中的项目 ======
       requestAnimationFrame(() => {
         const activeItem = playlist.querySelector('.playlist-item.active');
         if (activeItem) {
@@ -1302,13 +1318,10 @@
         player.style.width = `${Math.max(220, Math.min(width, containerWidth))}px`;
         player.style.height = `${finalHeight}px`;
 
-        // ====== 新增：将视频计算出的高度同步给播放列表 ======
         const playlistPanel = document.querySelector('.playlist-panel');
         if (window.innerWidth > 980) {
-          // 桌面端保持列表高度与视频区域绝对一致
           playlistPanel.style.height = `${finalHeight}px`;
         } else {
-          // 移动端/窄屏因为是上下布局，设定一个固定高度
           playlistPanel.style.height = '400px'; 
         }
       }
