@@ -18,6 +18,7 @@ const THUMB_DIR = path.join(CACHE_DIR, 'thumbs');
 const META_DIR = path.join(CACHE_DIR, 'meta');
 const CONVERT_HISTORY_FILE = path.join(CACHE_DIR, 'convert_history.json');
 const FOLDER_HISTORY_FILE = path.join(CACHE_DIR, 'folder_history.json');
+const OVERLAY_CONFIG_FILE = path.join(CACHE_DIR, 'overlay_config.json');
 let VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
 const danmuProgressMap = new Map();
 const convertTasks = new Map();
@@ -587,6 +588,33 @@ app.get('/api/danmu', async (req, res) => {
     res.json(result);
   } catch (err) {
     danmuProgressMap.delete(cacheKey);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== Overlay Config API ====================
+
+app.get('/api/overlay-config', (req, res) => {
+  try {
+    const defaults = { offset: 0, fontSize: 32, opacity: 1, speed: 18, area: 25 };
+    const maxDuration = Number(process.env.DANMAKU_MAX_DURATION) || 10800;
+    let config = defaults;
+    if (fs.existsSync(OVERLAY_CONFIG_FILE)) {
+      config = { ...defaults, ...JSON.parse(fs.readFileSync(OVERLAY_CONFIG_FILE, 'utf-8')) };
+    }
+    res.json({ ...config, maxDuration });
+  } catch {
+    res.json({ offset: 0, fontSize: 32, opacity: 1, speed: 18, area: 25, maxDuration: 10800 });
+  }
+});
+
+app.put('/api/overlay-config', (req, res) => {
+  try {
+    const defaults = { offset: 0, fontSize: 32, opacity: 1, speed: 18, area: 25 };
+    const config = { ...defaults, ...req.body };
+    fs.writeFileSync(OVERLAY_CONFIG_FILE, JSON.stringify(config, null, 2));
+    res.json(config);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
