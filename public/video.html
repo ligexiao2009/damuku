@@ -225,6 +225,24 @@
       overflow: hidden;
     }
 
+    .toggle-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .toggle-label input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      cursor: pointer;
+    }
+
     .playlist-header {
       display: flex;
       align-items: center;
@@ -690,7 +708,11 @@
               <div class="playlist-title">播放列表</div>
               <div class="playlist-meta" id="playlistMeta">未加载文件</div>
             </div>
-            <div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label class="toggle-label">
+                <input type="checkbox" id="autoplayToggle" checked>
+                <span class="toggle-text">连播</span>
+              </label>
               <button id="prevVideoBtn" type="button">上一页</button>
               <button id="nextVideoBtn" type="button">下一页</button>
             </div>
@@ -718,6 +740,7 @@
     const fullScreenBtn = document.getElementById('fullScreenBtn');
     const prevVideoBtn = document.getElementById('prevVideoBtn');
     const nextVideoBtn = document.getElementById('nextVideoBtn');
+    const autoplayToggle = document.getElementById('autoplayToggle');
     const playlist = document.getElementById('playlist');
     const playlistMeta = document.getElementById('playlistMeta');
     const bvidInput = document.getElementById('bvidInput');
@@ -1603,7 +1626,7 @@
       stopDanmuLoop();
       savePlaybackProgress(true);
       updatePlaybackStatus();
-      if (currentPlaylistIndex >= 0 && currentPlaylistIndex < currentPlaylist.length - 1) {
+      if (autoplayToggle.checked && currentPlaylistIndex >= 0 && currentPlaylistIndex < currentPlaylist.length - 1) {
         playFileAtIndex(currentPlaylistIndex + 1);
       }
     });
