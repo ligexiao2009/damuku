@@ -800,6 +800,7 @@
     let danmuAreaRatio = Number(areaControl.value) / 100;
     let danmuOffset = Number(offsetControl.value);
 
+    let currentVideoDir = '';
     let currentVideoMemoryId = '';
     let pendingResumeTime = 0;
     let currentVideoName = '未选择';
@@ -1473,6 +1474,7 @@
       danmuIndex = 0;
 
       currentPlaylistIndex = index;
+      if (item.isRemote && currentVideoDir) await saveFolderHistory(currentVideoDir, item.relativePath || item.file.name);
       currentVideoName = getPlaylistLabel(item);
       currentVideoMemoryId = buildVideoMemoryId(item.file);
       pendingResumeTime = await getPlaybackProgress(currentVideoMemoryId);
@@ -1510,6 +1512,23 @@
       return true;
     }
 
+    async function readFolderHistory() {
+      try {
+        const res = await fetch('/api/folder-history');
+        return await res.json();
+      } catch { return {}; }
+    }
+
+    async function saveFolderHistory(dir, name) {
+      try {
+        await fetch('/api/folder-history', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dir, name })
+        });
+      } catch {}
+    }
+
     async function loadServerVideos() {
       try {
         const res = await fetch('/api/videos');
@@ -1534,7 +1553,11 @@
         clearDanmu();
         renderPlaylist();
 
-        playFileAtIndex(0);
+        const history = await readFolderHistory();
+        const savedName = history[currentVideoDir];
+        const foundIndex = savedName ? currentPlaylist.findIndex(item => (item.relativePath || item.file.name) === savedName) : -1;
+        const startIndex = foundIndex >= 0 ? foundIndex : 0;
+        playFileAtIndex(startIndex);
       } catch (err) {
         console.error('获取服务器视频列表失败:', err);
         toast('获取服务器视频列表失败，请检查 Node.js 服务是否正常启动。');
@@ -1575,6 +1598,7 @@
           const data = await res.json();
           return toast(data.error || '切换目录失败');
         }
+        currentVideoDir = dir;
         await loadServerVideos();
       } catch (err) {
         console.error('切换目录失败:', err);

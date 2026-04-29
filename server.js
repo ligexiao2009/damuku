@@ -17,6 +17,7 @@ const DANMU_DIR = path.join(CACHE_DIR, 'danmu');
 const THUMB_DIR = path.join(CACHE_DIR, 'thumbs');
 const META_DIR = path.join(CACHE_DIR, 'meta');
 const CONVERT_HISTORY_FILE = path.join(CACHE_DIR, 'convert_history.json');
+const FOLDER_HISTORY_FILE = path.join(CACHE_DIR, 'folder_history.json');
 let VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
 const danmuProgressMap = new Map();
 const convertTasks = new Map();
@@ -586,6 +587,31 @@ app.get('/api/danmu', async (req, res) => {
     res.json(result);
   } catch (err) {
     danmuProgressMap.delete(cacheKey);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/folder-history', (req, res) => {
+  try {
+    if (!fs.existsSync(FOLDER_HISTORY_FILE)) return res.json({});
+    res.json(JSON.parse(fs.readFileSync(FOLDER_HISTORY_FILE, 'utf-8')));
+  } catch (err) {
+    res.json({});
+  }
+});
+
+app.put('/api/folder-history', (req, res) => {
+  try {
+    const { dir, name } = req.body;
+    if (!dir || name == null) return res.status(400).json({ error: '缺少参数' });
+    let history = {};
+    if (fs.existsSync(FOLDER_HISTORY_FILE)) {
+      history = JSON.parse(fs.readFileSync(FOLDER_HISTORY_FILE, 'utf-8'));
+    }
+    history[dir] = name;
+    fs.writeFileSync(FOLDER_HISTORY_FILE, JSON.stringify(history, null, 2));
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
