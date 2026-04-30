@@ -32,6 +32,8 @@
   const jumpBtn = document.getElementById('jump-btn');
   const folderSelect = document.getElementById('folder-select');
   const videoFileSelect = document.getElementById('video-file-select');
+  const settingsBtn = document.getElementById('settings-btn');
+  const settingsGroup = document.getElementById('settings-group');
   const timestampBtn = document.getElementById('timestamp-btn');
 
   let fadeTimer = null;
@@ -276,6 +278,12 @@
   jumpBtn.addEventListener('click', () => jumpToTime(timeInput.value));
   timeInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') jumpToTime(timeInput.value);
+  });
+
+  settingsBtn.addEventListener('click', () => {
+    const hidden = settingsGroup.style.display === 'none';
+    settingsGroup.style.display = hidden ? '' : 'none';
+    settingsBtn.textContent = hidden ? '收起设置' : '弹幕设置';
   });
 
   timestampBtn.addEventListener('click', () => {

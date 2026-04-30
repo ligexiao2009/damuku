@@ -49,38 +49,41 @@
       <button id="jump-btn">跳转</button>
     </div>
 
-    <div class="panel-row">
-      <label for="offset-slider">偏移</label>
-      <input type="range" id="offset-slider" min="-120" max="120" value="0" step="1">
-      <span class="val" id="offset-val">0s</span>
-    </div>
+    <div id="settings-group" style="display:none;">
+      <div class="panel-row">
+        <label for="offset-slider">偏移</label>
+        <input type="range" id="offset-slider" min="-120" max="120" value="0" step="1">
+        <span class="val" id="offset-val">0s</span>
+      </div>
 
-    <div class="panel-row">
-      <label for="fontsize-slider">字号</label>
-      <input type="range" id="fontsize-slider" min="14" max="72" value="32" step="1">
-      <span class="val" id="fontsize-val">32px</span>
-    </div>
+      <div class="panel-row">
+        <label for="fontsize-slider">字号</label>
+        <input type="range" id="fontsize-slider" min="14" max="72" value="32" step="1">
+        <span class="val" id="fontsize-val">32px</span>
+      </div>
 
-    <div class="panel-row">
-      <label for="opacity-slider">透明度</label>
-      <input type="range" id="opacity-slider" min="0.1" max="1" value="1" step="0.05">
-      <span class="val" id="opacity-val">100%</span>
-    </div>
+      <div class="panel-row">
+        <label for="opacity-slider">透明度</label>
+        <input type="range" id="opacity-slider" min="0.1" max="1" value="1" step="0.05">
+        <span class="val" id="opacity-val">100%</span>
+      </div>
 
-    <div class="panel-row">
-      <label for="speed-slider">速度</label>
-      <input type="range" id="speed-slider" min="8" max="40" value="18" step="1">
-      <span class="val" id="speed-val">18s</span>
-    </div>
+      <div class="panel-row">
+        <label for="speed-slider">速度</label>
+        <input type="range" id="speed-slider" min="8" max="40" value="18" step="1">
+        <span class="val" id="speed-val">18s</span>
+      </div>
 
-    <div class="panel-row">
-      <label for="area-slider">区域</label>
-      <input type="range" id="area-slider" min="10" max="100" value="25" step="5">
-      <span class="val" id="area-val">25%</span>
+      <div class="panel-row">
+        <label for="area-slider">区域</label>
+        <input type="range" id="area-slider" min="10" max="100" value="25" step="5">
+        <span class="val" id="area-val">25%</span>
+      </div>
     </div>
 
     <div class="panel-row actions">
       <button id="play-pause-btn" class="primary">开始</button>
+      <button id="settings-btn">弹幕设置</button>
       <button id="reset-btn">重置</button>
       <button id="timestamp-btn">显示时间戳</button>
       <button id="exit-btn" class="danger">退出</button>
