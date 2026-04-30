@@ -14,8 +14,6 @@ html, body {
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
   user-select: none;
   -webkit-user-select: none;
-  outline: 2px solid rgba(0, 0, 0, 0.4);
-  outline-offset: -2px;
 }
 
 /* Danmaku layer — full screen, click-through */
