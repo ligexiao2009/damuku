@@ -1,6 +1,6 @@
 {
   "name": "b-video-player",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "description": "B站弹幕外挂 - 跨播放器通用弹幕悬浮系统",
   "author": "b-video",
   "main": "electron/app.js",
@@ -8,9 +8,10 @@
     "start": "node server.js",
     "overlay": "electron electron/main.js",
     "overlay:dev": "OVERLAY_SERVER=http://localhost:3000 electron electron/main.js",
-    "dist": "electron-builder build --mac dmg --win nsis",
-    "dist:mac": "electron-builder build --mac dmg",
-    "dist:win": "electron-builder build --win nsis"
+    "bump": "npm version patch --no-git-tag-version",
+    "dist": "npm run bump && electron-builder build --mac dmg --win nsis",
+    "dist:mac": "npm run bump && electron-builder build --mac dmg",
+    "dist:win": "npm run bump && electron-builder build --win nsis"
   },
   "dependencies": {
     "axios": "^1.7.2",
