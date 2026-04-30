@@ -127,7 +127,10 @@
     if (isRunning) return;
     isRunning = true;
     simStartPerf = performance.now();
-    simTime = engine.danmus.length > 0 ? Math.max(0, engine.danmus[0].time - 2) : simTime;
+    // Only auto-set if user hasn't already jumped somewhere
+    if (simTime === 0 && engine.danmus.length > 0) {
+      simTime = Math.max(0, engine.danmus[0].time - 2);
+    }
     engine.start(simTime);
     playPauseBtn.textContent = '暂停';
     playPauseBtn.classList.add('primary');
