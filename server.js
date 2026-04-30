@@ -11,8 +11,9 @@ require('dotenv').config();
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-const CACHE_DIR = path.join(__dirname, 'cache');
-const PLAYBACK_DIR = path.join(__dirname, 'playback');
+const BASE_DIR = process.env.CACHE_BASE || __dirname;
+const CACHE_DIR = path.join(BASE_DIR, 'cache');
+const PLAYBACK_DIR = path.join(BASE_DIR, 'playback');
 const DANMU_DIR = path.join(CACHE_DIR, 'danmu');
 const THUMB_DIR = path.join(CACHE_DIR, 'thumbs');
 const META_DIR = path.join(CACHE_DIR, 'meta');
@@ -48,7 +49,7 @@ if (fs.existsSync(CONVERT_HISTORY_FILE)) {
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 const DM_PROTO = `
 syntax = "proto3";

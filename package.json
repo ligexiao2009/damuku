@@ -1,7 +1,9 @@
 {
   "name": "b-video-player",
   "version": "1.0.0",
-  "main": "server.js",
+  "description": "B站弹幕外挂 - 跨播放器通用弹幕悬浮系统",
+  "author": "b-video",
+  "main": "electron/app.js",
   "scripts": {
     "start": "node server.js",
     "overlay": "electron electron/main.js",
@@ -26,19 +28,16 @@
     "productName": "B站弹幕外挂",
     "files": [
       "electron/**/*",
-      "public/overlay.html",
-      "public/js/danmaku-core.js",
-      "public/js/overlay.js",
-      "public/css/overlay.css",
+      "public/**/*",
       "server.js",
-      "routes/**/*",
-      "cache/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      ".env.example"
     ],
     "mac": {
       "category": "public.app-category.utilities",
-      "target": "dmg"
+      "target": "dmg",
+      "icon": null
     },
     "win": {
       "target": "nsis"
