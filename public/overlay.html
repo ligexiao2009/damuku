@@ -16,15 +16,37 @@
 
   <!-- Control panel (hidden by default) -->
   <div id="control-panel">
+    <div class="panel-drag-handle" id="panel-drag-handle">
+      <span>控制面板</span>
+      <span style="font-size:10px;color:#666;">拖拽移动 · 双击归位</span>
+    </div>
     <div class="panel-row">
       <input type="text" id="bvid-input" placeholder="输入 BV 号或 EP 号...">
       <button id="load-btn" class="primary">加载弹幕</button>
     </div>
 
     <div class="panel-row">
+      <select id="folder-select" style="flex:1 1 100px;min-width:0;">
+        <option value="">-- 选择文件夹 --</option>
+      </select>
+    </div>
+
+    <div class="panel-row">
+      <select id="video-file-select" style="flex:1 1 100px;min-width:0;">
+        <option value="">-- 选择视频文件 --</option>
+      </select>
+    </div>
+
+    <div class="panel-row">
       <label for="seek-bar">进度</label>
       <input type="range" id="seek-bar" min="0" max="10800" value="0" step="1">
       <span class="val" id="seek-time">00:00</span>
+    </div>
+
+    <div class="panel-row">
+      <label for="time-input">跳转</label>
+      <input type="text" id="time-input" placeholder="1:23:45 或 90" style="flex:1 1 80px;text-align:center;">
+      <button id="jump-btn">跳转</button>
     </div>
 
     <div class="panel-row">

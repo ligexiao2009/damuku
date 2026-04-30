@@ -62,6 +62,22 @@ html, body {
   visibility: visible;
 }
 
+/* Drag handle */
+.panel-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a0a8c0;
+  cursor: grab;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.panel-drag-handle:active { cursor: grabbing; }
+
 /* Row layout */
 .panel-row {
   display: flex;
@@ -105,6 +121,35 @@ html, body {
   flex: 1 1 0;
   min-width: 0;
   accent-color: #ff6b8a;
+}
+
+/* Select dropdowns */
+.panel-row select {
+  flex: 1 1 100px;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #c0c8d8;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a0a8c0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 26px;
+}
+
+.panel-row select:focus {
+  border-color: rgba(255, 107, 138, 0.5);
+}
+
+.panel-row select option {
+  background: #1a1f2e;
+  color: #c0c8d8;
 }
 
 /* Value display */

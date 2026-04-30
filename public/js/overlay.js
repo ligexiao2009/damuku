@@ -28,6 +28,10 @@
   const statusIndicator = document.getElementById('status-indicator');
   const seekBar = document.getElementById('seek-bar');
   const seekTimeLabel = document.getElementById('seek-time');
+  const timeInput = document.getElementById('time-input');
+  const jumpBtn = document.getElementById('jump-btn');
+  const folderSelect = document.getElementById('folder-select');
+  const videoFileSelect = document.getElementById('video-file-select');
   const timestampBtn = document.getElementById('timestamp-btn');
 
   let fadeTimer = null;
@@ -161,11 +165,33 @@
     if (isRunning) engine.resume(simTime);
   }
 
+  function parseTime(str) {
+    const s = String(str || '').trim();
+    if (!s) return null;
+    if (/^\d+(\.?\d*)?$/.test(s)) return parseFloat(s);
+    const parts = s.split(':').map(Number);
+    if (parts.some(isNaN)) return null;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return null;
+  }
+
+  function jumpToTime(str) {
+    const t = parseTime(str);
+    if (t == null) { setStatus('格式错误 (如 1:23:45 或 90)'); return; }
+    seekTo(t);
+    updateTimeDisplay();
+    setStatus(`跳转到 ${formatTime(t)}`);
+  }
+
   function updateTimeDisplay() {
     if (isSeeking) return;
     const t = isRunning ? getSimulatedTime() : simTime;
     seekBar.value = Math.round(t);
     seekTimeLabel.textContent = formatTime(t);
+    if (document.activeElement !== timeInput) {
+      timeInput.value = formatTime(t);
+    }
   }
 
   // Override engine's loop to use simulated time (no video element in overlay mode)
@@ -239,7 +265,14 @@
   seekBar.addEventListener('change', () => {
     seekTo(Number(seekBar.value));
     isSeeking = false;
+    timeInput.value = formatTime(Number(seekBar.value));
     setStatus(`跳转到 ${formatTime(Number(seekBar.value))}`);
+  });
+
+  // Time input: manual hh:mm:ss jump
+  jumpBtn.addEventListener('click', () => jumpToTime(timeInput.value));
+  timeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') jumpToTime(timeInput.value);
   });
 
   timestampBtn.addEventListener('click', () => {
@@ -402,8 +435,98 @@
     }, 3000);
   }
 
+  // --- Folder & video file selection ---
+  function detectVideoId(name) {
+    if (!name) return '';
+    const base = String(name).replace(/\.[^.]+$/, '');
+    const bv = base.match(/BV[0-9A-Za-z]+/i);
+    if (bv) return bv[0];
+    const ep = base.match(/(?:^|[_\s-])(ep\d{4,})(?=$|[_\s-])/i);
+    if (ep) return ep[1];
+    return '';
+  }
+
+  async function loadFolders() {
+    try {
+      const res = await fetch(`${SERVER}/api/folders`);
+      const folders = await res.json();
+      folderSelect.innerHTML = '<option value="">-- 选择文件夹 --</option>';
+      if (!folders || !folders.length) return;
+      folders.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.path;
+        opt.textContent = f.name;
+        folderSelect.appendChild(opt);
+      });
+    } catch (e) { console.log('加载文件夹失败'); }
+  }
+
+  async function loadFilesForFolder(folderPath) {
+    videoFileSelect.innerHTML = '<option value="">-- 加载中... --</option>';
+    try {
+      const res = await fetch(`${SERVER}/api/video-files?folder=${encodeURIComponent(folderPath)}`);
+      const files = await res.json();
+      videoFileSelect.innerHTML = '<option value="">-- 选择视频文件 --</option>';
+      if (!files || !files.length) return;
+      files.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.name;
+        const vid = detectVideoId(f.name);
+        opt.textContent = vid ? `${f.name}  [${vid}]` : f.name;
+        videoFileSelect.appendChild(opt);
+      });
+    } catch (e) {
+      videoFileSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
+    }
+  }
+
+  folderSelect.addEventListener('change', () => {
+    const folder = folderSelect.value;
+    if (!folder) {
+      videoFileSelect.innerHTML = '<option value="">-- 选择视频文件 --</option>';
+      return;
+    }
+    loadFilesForFolder(folder);
+  });
+
+  videoFileSelect.addEventListener('change', () => {
+    const selected = videoFileSelect.value;
+    if (!selected) return;
+    const vid = detectVideoId(selected);
+    if (vid) bvidInput.value = vid;
+  });
+
+  // --- Panel dragging ---
+  let dragInfo = null;
+  const dragHandle = document.getElementById('panel-drag-handle');
+
+  dragHandle.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const rect = controlPanel.getBoundingClientRect();
+    dragInfo = { startX: e.clientX, startY: e.clientY, startLeft: rect.left, startTop: rect.top };
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragInfo) return;
+    controlPanel.style.left = `${dragInfo.startLeft + e.clientX - dragInfo.startX}px`;
+    controlPanel.style.top = `${dragInfo.startTop + e.clientY - dragInfo.startY}px`;
+    controlPanel.style.bottom = 'auto';
+    controlPanel.style.transform = 'none';
+  });
+
+  document.addEventListener('mouseup', () => { dragInfo = null; });
+
+  dragHandle.addEventListener('dblclick', () => {
+    controlPanel.style.left = '';
+    controlPanel.style.top = '';
+    controlPanel.style.bottom = '40px';
+    controlPanel.style.transform = 'translateX(-50%)';
+  });
+
   // --- Init ---
   loadConfig();
+  loadFolders();
 
   setStatus('就绪 — 按 Space 开始/暂停, O 打开控制面板, ← → 微调时间');
 

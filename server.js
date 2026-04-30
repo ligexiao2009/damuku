@@ -745,7 +745,30 @@ function scanVideoFiles(baseDir, relativePath = '') {
 
 app.get('/api/video-files', (req, res) => {
   try {
-    const files = scanVideoFiles(FOLDERS_BASE);
+    const folder = req.query.folder;
+    let base = FOLDERS_BASE;
+    let files;
+    if (folder) {
+      const resolved = path.resolve(folder);
+      if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
+        return res.status(400).json({ error: '非法目录路径' });
+      }
+      base = resolved;
+      // Only scan direct children, not recursive
+      files = [];
+      let entries;
+      try {
+        entries = fs.readdirSync(base, { withFileTypes: true });
+      } catch { entries = []; }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        if (entry.isFile() && isVideoExt(entry.name)) {
+          files.push({ path: path.join(base, entry.name), name: entry.name });
+        }
+      }
+    } else {
+      files = scanVideoFiles(FOLDERS_BASE);
+    }
     files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
     res.json(files);
   } catch (err) {
