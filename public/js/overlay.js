@@ -173,12 +173,24 @@
   function parseTime(str) {
     const s = String(str || '').trim();
     if (!s) return null;
-    if (/^\d+(\.?\d*)?$/.test(s)) return parseFloat(s);
-    const parts = s.split(':').map(Number);
-    if (parts.some(isNaN)) return null;
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    return null;
+    // Colon format: "1:23:45" or "23:45" or "45"
+    if (s.includes(':')) {
+      const parts = s.split(':').map(Number);
+      if (parts.some(isNaN)) return null;
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      return null;
+    }
+    // Digit-only format: 2513→25:13, 0513→5:13, 12513→1:25:13, 90→90s
+    if (/^\d+$/.test(s)) {
+      const len = s.length;
+      if (len <= 2) return parseInt(s, 10);
+      if (len === 3) return parseInt(s[0], 10) * 60 + parseInt(s.slice(1), 10);
+      if (len === 4) return parseInt(s.slice(0, 2), 10) * 60 + parseInt(s.slice(2), 10);
+      if (len === 5) return parseInt(s[0], 10) * 3600 + parseInt(s.slice(1, 3), 10) * 60 + parseInt(s.slice(3), 10);
+      if (len >= 6) return parseInt(s.slice(0, 2), 10) * 3600 + parseInt(s.slice(2, 4), 10) * 60 + parseInt(s.slice(4), 10);
+    }
+    return parseFloat(s) || null;
   }
 
   function jumpToTime(str) {
