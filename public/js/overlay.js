@@ -55,6 +55,7 @@
   let currentBvid = '';
   let maxDuration = 10800; // 3 hours, updated from server config
   let isSeeking = false;   // pause time updates while user drags
+  let lastFolder = '';
 
   // --- Load saved config from server ---
   async function loadConfig() {
@@ -67,6 +68,7 @@
       }
       engine.configure(cfg);
       syncControlsFromEngine();
+      if (cfg.lastFolder) lastFolder = cfg.lastFolder;
     } catch (e) {
       console.log('无法加载配置，使用默认值');
     }
@@ -74,14 +76,33 @@
 
   async function saveConfig() {
     try {
+      const cfg = engine.getConfig();
+      cfg.lastFolder = lastFolder;
       await fetch(`${SERVER}/api/overlay-config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(engine.getConfig())
+        body: JSON.stringify(cfg)
       });
     } catch (e) {
       console.log('配置保存失败');
     }
+  }
+
+  async function readFolderHistory() {
+    try {
+      const res = await fetch(`${SERVER}/api/folder-history`);
+      return await res.json();
+    } catch { return {}; }
+  }
+
+  async function saveFolderHistory(dir, name) {
+    try {
+      await fetch(`${SERVER}/api/folder-history`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir, name })
+      });
+    } catch { /* ignore */ }
   }
 
   // --- Sync UI sliders with engine ---
@@ -482,7 +503,16 @@
         opt.textContent = f.name;
         folderSelect.appendChild(opt);
       });
-      // Auto-select "movie" folder
+      // Auto-select last used folder
+      if (lastFolder) {
+        const match = [...folderSelect.options].find(o => o.value === lastFolder);
+        if (match) {
+          match.selected = true;
+          folderSelect.dispatchEvent(new Event('change'));
+          return;
+        }
+      }
+      // Fallback: auto-select "movie"
       const movieOpt = [...folderSelect.options].find(o => o.textContent.toLowerCase() === 'movie');
       if (movieOpt) {
         movieOpt.selected = true;
@@ -505,6 +535,16 @@
         opt.textContent = vid ? `${f.name}  [${vid}]` : f.name;
         videoFileSelect.appendChild(opt);
       });
+      // Auto-select last played video in this folder
+      const history = await readFolderHistory();
+      const savedName = history[folderPath];
+      if (savedName) {
+        const match = [...videoFileSelect.options].find(o => o.value === savedName);
+        if (match) {
+          match.selected = true;
+          videoFileSelect.dispatchEvent(new Event('change'));
+        }
+      }
     } catch (e) {
       videoFileSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
     }
@@ -516,6 +556,8 @@
       videoFileSelect.innerHTML = '<option value="">-- 选择视频文件 --</option>';
       return;
     }
+    lastFolder = folder;
+    saveConfig();
     loadFilesForFolder(folder);
   });
 
@@ -524,6 +566,10 @@
     if (!selected) return;
     const vid = detectVideoId(selected);
     if (vid) bvidInput.value = vid;
+    const folder = folderSelect.value;
+    if (folder && selected) {
+      saveFolderHistory(folder, selected);
+    }
   });
 
   // --- Panel dragging ---
@@ -555,8 +601,10 @@
   });
 
   // --- Init ---
-  loadConfig();
-  loadFolders();
+  (async () => {
+    await loadConfig();
+    await loadFolders();
+  })();
 
   setStatus('就绪 — 按 Space 开始/暂停, O 打开控制面板, ← → 微调时间');
 
