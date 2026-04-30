@@ -482,6 +482,12 @@
         opt.textContent = f.name;
         folderSelect.appendChild(opt);
       });
+      // Auto-select "movie" folder
+      const movieOpt = [...folderSelect.options].find(o => o.textContent.toLowerCase() === 'movie');
+      if (movieOpt) {
+        movieOpt.selected = true;
+        folderSelect.dispatchEvent(new Event('change'));
+      }
     } catch (e) { console.log('加载文件夹失败'); }
   }
 

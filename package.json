@@ -1,6 +1,6 @@
 {
   "name": "b-video-player",
-  "version": "1.2.13",
+  "version": "1.2.15",
   "description": "B站弹幕外挂 - 跨播放器通用弹幕悬浮系统",
   "author": "b-video",
   "main": "electron/app.js",
