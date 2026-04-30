@@ -369,7 +369,8 @@
         togglePanel();
         break;
       case 'Escape':
-        hidePanel();
+        e.preventDefault();
+        togglePanel(); // 【关键修改】：这里改为 toggle，当面板显示时按 Esc 会隐藏
         break;
     }
   });

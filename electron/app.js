@@ -155,18 +155,6 @@ ipcMain.on('set-click-through', (event, enabled) => {
   if (win) win.setIgnoreMouseEvents(enabled, { forward: true });
 });
 
-ipcMain.on('set-panel-visible', (event, visible) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win) return;
-  if (visible) {
-    win.setVisibleOnAllWorkspaces(false);
-    win.setAlwaysOnTop(true, 'floating');
-  } else {
-    win.setAlwaysOnTop(true, 'screen-saver');
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  }
-});
-
 ipcMain.on('close-window', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) win.close();
@@ -175,8 +163,8 @@ ipcMain.on('close-window', (event) => {
 // --- Lifecycle ---
 
 app.whenReady().then(() => {
-  // Ensure Dock icon is visible
-  if (app.dock) app.dock.show();
+  // 【关键修改点】为了能在 macOS 全屏视频上显示覆盖层，必须隐藏 Dock 图标
+  if (app.dock) app.dock.hide();
 
   setTimeout(() => {
     createAllWindows();
