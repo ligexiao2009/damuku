@@ -83,18 +83,18 @@ function closeAllWindows() {
 
 function registerShortcuts() {
   const shortcuts = {
-    'Space':            'shortcut:play-pause',
-    'Left':             'shortcut:seek-backward',
-    'Right':            'shortcut:seek-forward',
-    'Shift+Left':       'shortcut:seek-backward-big',
-    'Shift+Right':      'shortcut:seek-forward-big',
-    'Up':               'shortcut:opacity-up',
-    'Down':             'shortcut:opacity-down',
-    'CmdOrCtrl+Up':     'shortcut:fontsize-up',
-    'CmdOrCtrl+Down':   'shortcut:fontsize-down',
-    'O':                'shortcut:toggle-panel',
-    'Esc':              'shortcut:toggle-panel',
-    'CmdOrCtrl+L':      'shortcut:load-danmaku'
+    'CmdOrCtrl+Space':       'shortcut:play-pause',
+    'CmdOrCtrl+Left':        'shortcut:seek-backward',
+    'CmdOrCtrl+Right':       'shortcut:seek-forward',
+    'CmdOrCtrl+Shift+Left':  'shortcut:seek-backward-big',
+    'CmdOrCtrl+Shift+Right': 'shortcut:seek-forward-big',
+    'CmdOrCtrl+Up':          'shortcut:opacity-up',
+    'CmdOrCtrl+Down':        'shortcut:opacity-down',
+    'CmdOrCtrl+Shift+Up':    'shortcut:fontsize-up',
+    'CmdOrCtrl+Shift+Down':  'shortcut:fontsize-down',
+    'CmdOrCtrl+O':           'shortcut:toggle-panel',
+    'Esc':                   'shortcut:toggle-panel',
+    'CmdOrCtrl+L':           'shortcut:load-danmaku'
   };
 
   for (const [key, channel] of Object.entries(shortcuts)) {

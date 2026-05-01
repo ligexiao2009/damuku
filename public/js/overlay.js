@@ -452,13 +452,17 @@
     // Don't capture when typing in input
     if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
 
+    const mod = e.ctrlKey || e.metaKey;
+
     switch (e.key) {
       case ' ':
+        if (!mod) return;
         e.preventDefault();
         if (isRunning) pauseSimulation();
         else startSimulation();
         break;
       case 'ArrowLeft':
+        if (!mod) return;
         e.preventDefault();
         if (e.shiftKey) {
           simTime = Math.max(0, (isRunning ? getSimulatedTime() : simTime) - 2);
@@ -471,6 +475,7 @@
         updateTimeDisplay();
         break;
       case 'ArrowRight':
+        if (!mod) return;
         e.preventDefault();
         if (e.shiftKey) {
           simTime = (isRunning ? getSimulatedTime() : simTime) + 2;
@@ -483,21 +488,32 @@
         updateTimeDisplay();
         break;
       case 'ArrowUp':
+        if (!mod) return;
         e.preventDefault();
-        applyAndSave({ opacity: Math.min(1, engine.opacity + 0.05) });
+        if (e.shiftKey) {
+          applyAndSave({ fontSize: Math.min(72, engine.fontSize + 2) });
+        } else {
+          applyAndSave({ opacity: Math.min(1, engine.opacity + 0.05) });
+        }
         break;
       case 'ArrowDown':
+        if (!mod) return;
         e.preventDefault();
-        applyAndSave({ opacity: Math.max(0.1, engine.opacity - 0.05) });
+        if (e.shiftKey) {
+          applyAndSave({ fontSize: Math.max(14, engine.fontSize - 2) });
+        } else {
+          applyAndSave({ opacity: Math.max(0.1, engine.opacity - 0.05) });
+        }
         break;
       case 'o':
       case 'O':
+        if (!mod) return;
         e.preventDefault();
         togglePanel();
         break;
       case 'Escape':
         e.preventDefault();
-        togglePanel(); // 【关键修改】：这里改为 toggle，当面板显示时按 Esc 会隐藏
+        togglePanel();
         break;
     }
   });
