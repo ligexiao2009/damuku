@@ -10,6 +10,7 @@ const { decodeSafe, resolveVideoPath, isVideoExt, scanVideos, getCacheFilePaths,
 const { detectVideoIdFromName, sanitizeFileName, extractEpisodeNumberFromFileName, extractEpId } = require('./utils/video');
 const { fetchVideoMeta, fetchSeasonInfo, fetchDanmuXml, fetchDanmuSeg, fetchBiliCover, downloadImage } = require('./services/bilibili');
 const { parseDanmu, tryParseDanmuSeg } = require('./services/danmu');
+const { fetchTencentDanmaku } = require('./services/tencent');
 const { streamDirect, transcodeStream, generateLocalThumb } = require('./services/ffmpeg');
 
 const app = express();
@@ -260,6 +261,124 @@ app.get('/api/danmu', async (req, res) => {
     res.json(success(result));
   } catch (err) {
     danmuProgressMap.delete(cacheKey);
+    res.status(500).json(fail(500, err.message));
+  }
+});
+
+// ==================== Unified Danmaku API ====================
+
+app.get('/api/danmaku', async (req, res) => {
+  try {
+    const { source, id, duration } = req.query;
+    if (!source || !id) return res.status(400).json(fail(400, '缺少 source 或 id 参数'));
+
+    // 腾讯弹幕
+    if (source === 'qq') {
+      const vid = id;
+      const durMs = Number(duration) || 3600000;
+      const cacheFile = path.join(DANMU_DIR, `qq_${vid}.json`);
+
+      if (fs.existsSync(cacheFile)) {
+        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+        return res.json(success({ ...cached, fromCache: true }));
+      }
+
+      console.log(`[tencent] 抓取弹幕 VID: ${vid} 时长: ${(durMs / 60000).toFixed(1)}分钟`);
+      console.time('[tencent] 耗时');
+      const danmus = await fetchTencentDanmaku(vid, durMs);
+      console.timeEnd('[tencent] 耗时');
+      console.log(`[tencent] 完成，共 ${danmus.length} 条`);
+
+      const result = { source: 'qq', id: vid, count: danmus.length, danmus };
+      fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
+      return res.json(success(result));
+    }
+
+    // B站弹幕
+    if (source === 'bili') {
+      const requestedStrategy = req.query.strategy === 'xml' ? 'xml' : 'seg.so';
+      const forceRefresh = req.query.refresh === '1';
+      const cacheKey = id.toUpperCase().startsWith('BV') ? id : `ep${String(id).replace(/^ep/i, '')}`;
+      const [cacheFile] = getCacheFilePaths(cacheKey, requestedStrategy, DANMU_DIR);
+
+      if (!forceRefresh && fs.existsSync(cacheFile)) {
+        return res.json(success({ ...JSON.parse(fs.readFileSync(cacheFile, 'utf-8')), fromCache: true }));
+      }
+
+      console.log('Fetching danmu for ID:', id, 'Strategy:', requestedStrategy);
+      const videoMeta = await fetchVideoMeta(id, META_DIR);
+      let danmus = [];
+
+      if (requestedStrategy === 'seg.so') {
+        const segmentCount = Math.min(100, Math.max(1, Math.ceil((videoMeta.duration || 0) / 360)));
+        console.log(`[seg.so] 开始加载，共 ${segmentCount} 分段...`);
+        console.time('[seg.so] 耗时');
+
+        danmuProgressMap.set(cacheKey, { current: 0, total: segmentCount, phase: 'loading' });
+
+        const results = [];
+        for (let i = 1; i <= segmentCount; i++) {
+          try {
+            const buf = await fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: i });
+            results[i - 1] = { status: 'fulfilled', value: buf };
+          } catch (err) {
+            results[i - 1] = { status: 'rejected', reason: err };
+          }
+          danmuProgressMap.set(cacheKey, { current: i, total: segmentCount, phase: 'loading' });
+          if (i < segmentCount) await new Promise(r => setTimeout(r, 2000));
+        }
+
+        danmus = [];
+        const retryIndices = [];
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') {
+            const parsed = tryParseDanmuSeg(r.value, i + 1);
+            if (parsed.length) danmus.push(...parsed);
+            else retryIndices.push(i + 1);
+          } else {
+            retryIndices.push(i + 1);
+          }
+        });
+
+        if (retryIndices.length) {
+          danmuProgressMap.set(cacheKey, { current: 0, total: retryIndices.length, phase: 'retrying' });
+          console.log(`[seg.so] ${retryIndices.length} 分段失败，5秒后重试...`);
+          await new Promise(r => setTimeout(r, 5000));
+          for (const idx of retryIndices) {
+            try {
+              const buf = await fetchDanmuSeg({ cid: videoMeta.cid, aid: videoMeta.aid, segmentIndex: idx });
+              const parsed = tryParseDanmuSeg(buf, idx);
+              if (parsed.length) danmus.push(...parsed);
+            } catch (err) {}
+            danmuProgressMap.set(cacheKey, { current: retryIndices.indexOf(idx) + 1, total: retryIndices.length, phase: 'retrying' });
+            if (idx < retryIndices[retryIndices.length - 1]) await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+
+        danmuProgressMap.delete(cacheKey);
+        console.timeEnd('[seg.so] 耗时');
+        console.log(`[seg.so] 完成，共 ${danmus.length} 条`);
+      } else {
+        console.time('[xml] 耗时');
+        const xml = await fetchDanmuXml(videoMeta.cid);
+        danmus = parseDanmu(xml);
+        console.timeEnd('[xml] 耗时');
+        console.log(`[xml] 完成，共 ${danmus.length} 条`);
+      }
+
+      const cacheFileFinal = getCacheFilePaths(cacheKey, requestedStrategy, DANMU_DIR)[0];
+      const result = { source: 'bili', strategy: requestedStrategy, id, cid: videoMeta.cid, count: danmus.length, danmus };
+      fs.writeFileSync(cacheFileFinal, JSON.stringify(result, null, 2));
+      return res.json(success(result));
+    }
+
+    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq'));
+  } catch (err) {
+    const { id, source } = req.query;
+    if (source === 'bili') {
+      const ck = (id || '').toUpperCase().startsWith('BV') ? id : `ep${String(id || '').replace(/^ep/i, '')}`;
+      danmuProgressMap.delete(ck);
+    }
     res.status(500).json(fail(500, err.message));
   }
 });

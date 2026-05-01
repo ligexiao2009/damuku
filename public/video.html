@@ -652,7 +652,11 @@
         <input type="file" id="videoFile" accept="video/*" multiple>
         <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
         <button id="pickFolderBtn">选择文件夹</button>
-        <input type="text" id="bvidInput" placeholder="输入BV号或ep号">
+        <select id="sourceSelect" title="弹幕源" style="flex:0 0 88px">
+          <option value="bili">B站弹幕</option>
+          <option value="qq">腾讯弹幕</option>
+        </select>
+        <input type="text" id="bvidInput" placeholder="输入BV号、ep号或VID">
          <button id="renamePageBtn">tools</button>
         <button id="toggleSettingsBtn">弹幕设置</button>
         <button id="fullScreenBtn">全屏播放</button>
@@ -744,6 +748,7 @@
     const playlist = document.getElementById('playlist');
     const playlistMeta = document.getElementById('playlistMeta');
     const bvidInput = document.getElementById('bvidInput');
+    const sourceSelect = document.getElementById('sourceSelect');
     const strategySelect = document.getElementById('strategySelect');
     const danmakuLayer = document.getElementById('danmaku-layer');
     const speedControl = document.getElementById('speedControl');
@@ -1011,6 +1016,18 @@
       return '';
     }
 
+    function detectVidFromName(name) {
+      if (!name) return '';
+      const baseName = String(name).replace(/\.[^.]+$/, '');
+      const vidMatch = baseName.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/i);
+      return vidMatch ? vidMatch[1] : '';
+    }
+
+    function getVideoIdForSource(name, source) {
+      if (source === 'qq') return detectVidFromName(name);
+      return detectVideoIdFromName(name);
+    }
+
     async function getPlaybackProgress(id) {
       if (!id) return 0;
       try {
@@ -1053,7 +1070,7 @@
     }
 
     function updateStatusBar({ count, fromCache, forceRefresh, fileName } = {}) {
-      statusStrategy.textContent = strategySelect.value;
+      statusStrategy.textContent = sourceSelect.value === 'qq' ? '腾讯' : strategySelect.value;
       statusCount.textContent = String(count ?? danmus.length ?? 0);
       statusCache.textContent = fromCache == null ? '未加载' : (fromCache ? '命中' : '重拉');
       statusRefresh.textContent = forceRefresh ? '是' : '否';
@@ -1436,45 +1453,65 @@
 
     async function applyDanmuForVideoId(videoId, { showAlert = true, forceRefresh = false } = {}) {
       if (!videoId) {
-        if (showAlert) toast('请输入BV号或ep号');
+        if (showAlert) toast('请输入BV号、ep号或VID');
         return false;
       }
 
-      const loadingToast = toast('正在加载弹幕...', 0);
-      const progressTimer = setInterval(async () => {
+      const source = sourceSelect.value;
+      const sourceLabel = source === 'qq' ? '腾讯' : 'B站';
+      const loadingToast = toast(`正在加载${sourceLabel}弹幕...`, 0);
+
+      if (source === 'bili') {
+        const progressTimer = setInterval(async () => {
+          try {
+            const p = await api(`/api/danmu/progress?id=${encodeURIComponent(videoId)}`);
+            if (p) {
+              const phase = p.phase === 'retrying' ? '重试' : '加载';
+              loadingToast.textContent = `正在${phase}弹幕... ${p.current}/${p.total}`;
+            }
+          } catch {}
+        }, 800);
+
         try {
-          const p = await api(`/api/danmu/progress?id=${encodeURIComponent(videoId)}`);
-          if (p) {
-            const phase = p.phase === 'retrying' ? '重试' : '加载';
-            loadingToast.textContent = `正在${phase}弹幕... ${p.current}/${p.total}`;
-          }
-        } catch {}
-      }, 800);
-
-      try {
-        const params = new URLSearchParams({ id: videoId, strategy: strategySelect.value });
-        if (forceRefresh) params.set('refresh', '1');
-
-        const data = await api(`/api/danmu?${params.toString()}`);
-
-        danmus = data.danmus.sort((a, b) => a.time - b.time);
-        danmuIndex = 0;
-        clearDanmu();
-        updateStatusBar({ count: data.count, fromCache: data.fromCache, forceRefresh: data.forceRefresh });
-
-        clearInterval(progressTimer);
-        dismissToast(loadingToast);
-        if (showAlert) toast(`已加载 ${danmus.length} 条弹幕`);
-        return true;
-      } catch (error) {
-        danmus = [];
-        danmuIndex = 0;
-        clearDanmu();
-        updateStatusBar({ count: 0, fromCache: false, forceRefresh });
-        clearInterval(progressTimer);
-        dismissToast(loadingToast);
-        if (showAlert) toast(error.message || '弹幕加载失败');
-        return false;
+          const params = new URLSearchParams({ source, id: videoId, strategy: strategySelect.value });
+          if (forceRefresh) params.set('refresh', '1');
+          const data = await api(`/api/danmaku?${params.toString()}`);
+          danmus = data.danmus.sort((a, b) => a.time - b.time);
+          danmuIndex = 0;
+          clearDanmu();
+          updateStatusBar({ count: data.count, fromCache: data.fromCache, forceRefresh });
+          clearInterval(progressTimer);
+          dismissToast(loadingToast);
+          if (showAlert) toast(`已加载 ${danmus.length} 条弹幕`);
+          return true;
+        } catch (error) {
+          danmus = []; danmuIndex = 0; clearDanmu();
+          updateStatusBar({ count: 0, fromCache: false, forceRefresh });
+          clearInterval(progressTimer);
+          dismissToast(loadingToast);
+          if (showAlert) toast(error.message || '弹幕加载失败');
+          return false;
+        }
+      } else {
+        try {
+          const durMs = video.duration ? Math.round(video.duration * 1000) : 3600000;
+          const params = new URLSearchParams({ source, id: videoId, duration: String(durMs) });
+          if (forceRefresh) params.set('refresh', '1');
+          const data = await api(`/api/danmaku?${params.toString()}`);
+          danmus = data.danmus.sort((a, b) => a.time - b.time);
+          danmuIndex = 0;
+          clearDanmu();
+          updateStatusBar({ count: data.count, fromCache: data.fromCache, forceRefresh });
+          dismissToast(loadingToast);
+          if (showAlert) toast(`已加载 ${danmus.length} 条弹幕`);
+          return true;
+        } catch (error) {
+          danmus = []; danmuIndex = 0; clearDanmu();
+          updateStatusBar({ count: 0, fromCache: false, forceRefresh });
+          dismissToast(loadingToast);
+          if (showAlert) toast(error.message || '弹幕加载失败');
+          return false;
+        }
       }
     }
 
@@ -1679,6 +1716,16 @@
 
     loadDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim()));
     refreshDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim(), { forceRefresh: true }));
+
+    sourceSelect.addEventListener('change', () => {
+      const isQQ = sourceSelect.value === 'qq';
+      strategySelect.style.display = isQQ ? 'none' : '';
+      bvidInput.placeholder = isQQ ? '输入VID' : '输入BV号、ep号';
+      if (currentVideoName && currentVideoName !== '未选择') {
+        bvidInput.value = getVideoIdForSource(currentVideoName, sourceSelect.value);
+      }
+      updateStatusBar();
+    });
 
     prevVideoBtn.addEventListener('click', () => {
       const page = getCurrentPage();

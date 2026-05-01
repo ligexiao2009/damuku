@@ -17,6 +17,7 @@
   const danmakuLayer = document.getElementById('danmaku-layer');
   const controlPanel = document.getElementById('control-panel');
   const bvidInput = document.getElementById('bvid-input');
+  const sourceSelect = document.getElementById('source-select');
   const loadBtn = document.getElementById('load-btn');
   const playPauseBtn = document.getElementById('play-pause-btn');
   const offsetSlider = document.getElementById('offset-slider');
@@ -132,17 +133,22 @@
   }
 
   // --- Danmaku loading ---
-  async function loadDanmaku(bvid) {
-    if (!bvid) {
-      setStatus('请输入 BV 号或 EP 号');
+  async function loadDanmaku(id) {
+    if (!id) {
+      setStatus('请输入 BV号、EP号 或 VID');
       return;
     }
-    setStatus('加载弹幕中...');
+    const source = sourceSelect.value;
+    const label = source === 'qq' ? '腾讯' : 'B站';
+    setStatus(`加载${label}弹幕中...`);
     try {
-      const data = await api(`${SERVER}/api/danmu?id=${encodeURIComponent(bvid)}&strategy=seg.so`);
+      const params = new URLSearchParams({ source, id });
+      if (source === 'bili') params.set('strategy', 'seg.so');
+      if (source === 'qq') params.set('duration', String(maxDuration * 1000));
+      const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
       engine.load(data.danmus);
-      currentBvid = bvid;
-      setStatus(`已加载 ${data.danmus.length} 条弹幕 · ${bvid}`);
+      currentBvid = id;
+      setStatus(`已加载 ${data.danmus.length} 条弹幕 · ${id}`);
     } catch (err) {
       setStatus(`加载失败: ${err.message}`);
     }
@@ -277,6 +283,14 @@
 
   bvidInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') loadDanmaku(bvidInput.value.trim());
+  });
+
+  sourceSelect.addEventListener('change', () => {
+    bvidInput.placeholder = sourceSelect.value === 'qq' ? '输入 VID' : '输入 BV 号或 EP 号';
+    const name = videoFileSelect.value || bvidInput.value;
+    if (name) {
+      bvidInput.value = getVideoIdForSource(name, sourceSelect.value);
+    }
   });
 
   playPauseBtn.addEventListener('click', () => {
@@ -492,6 +506,18 @@
     const ep = base.match(/(?:^|[_\s-])(ep\d{4,})(?=$|[_\s-])/i);
     if (ep) return ep[1];
     return '';
+  }
+
+  function detectVid(name) {
+    if (!name) return '';
+    const base = String(name).replace(/\.[^.]+$/, '');
+    const m = base.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/i);
+    return m ? m[1] : '';
+  }
+
+  function getVideoIdForSource(name, source) {
+    if (source === 'qq') return detectVid(name);
+    return detectVideoId(name);
   }
 
   async function loadFolders() {
