@@ -78,6 +78,14 @@ message DmSegMobileReply {
 const dmRoot = protobuf.parse(DM_PROTO).root;
 const DmSegMobileReply = dmRoot.lookupType('DmSegMobileReply');
 
+function success(data, message = 'ok') {
+  return { code: 0, data, message };
+}
+
+function fail(code, message) {
+  return { code, data: null, message };
+}
+
 function getRequestHeaders() {
   const headers = {
     'User-Agent': 'Mozilla/5.0',
@@ -485,25 +493,25 @@ async function downloadImage(url, outputPath) {
 
 app.get('/api/danmu/progress', (req, res) => {
   const { id } = req.query;
-  if (!id) return res.status(400).json({ error: '缺少视频ID' });
+  if (!id) return res.status(400).json(fail(400, '缺少视频ID'));
   const cacheKey = id.toUpperCase().startsWith('BV') ? id : `ep${String(id).replace(/^ep/i, '')}`;
   const progress = danmuProgressMap.get(cacheKey);
-  res.json(progress || null);
+  res.json(success(progress || null));
 });
 
 app.get('/api/danmu', async (req, res) => {
+  let cacheKey;
   try {
     const { id } = req.query;
     const requestedStrategy = req.query.strategy === 'seg.so' ? 'seg.so' : 'xml';
     const forceRefresh = req.query.refresh === '1';
 
-    if (!id) return res.status(400).json({ error: '缺少视频ID' });
-
-    const cacheKey = id.toUpperCase().startsWith('BV') ? id : `ep${String(id).replace(/^ep/i, '')}`;
+    if (!id) return res.status(400).json(fail(400, '缺少视频ID'));
+    cacheKey = id.toUpperCase().startsWith('BV') ? id : `ep${String(id).replace(/^ep/i, '')}`;
     const [cacheFile] = getCacheFilePaths(cacheKey, requestedStrategy);
 
     if (!forceRefresh && fs.existsSync(cacheFile)) {
-      return res.json({ ...JSON.parse(fs.readFileSync(cacheFile, 'utf-8')), fromCache: true });
+      return res.json(success({ ...JSON.parse(fs.readFileSync(cacheFile, 'utf-8')), fromCache: true }));
     }
     console.log('Fetching danmu for ID:', id, 'Strategy:', requestedStrategy, 'Force Refresh:', forceRefresh);
     const videoMeta = await fetchVideoMeta(id);
@@ -586,10 +594,10 @@ app.get('/api/danmu', async (req, res) => {
     const cacheFileFinal = getCacheFilePaths(cacheKey, strategy)[0];
     const result = { strategy, id, cid: videoMeta.cid, count: danmus.length, danmus };
     fs.writeFileSync(cacheFileFinal, JSON.stringify(result, null, 2));
-    res.json(result);
+    res.json(success(result));
   } catch (err) {
     danmuProgressMap.delete(cacheKey);
-    res.status(500).json({ error: err.message });
+    res.status(500).json(fail(500, err.message));
   }
 });
 
@@ -603,9 +611,9 @@ app.get('/api/overlay-config', (req, res) => {
     if (fs.existsSync(OVERLAY_CONFIG_FILE)) {
       config = { ...defaults, ...JSON.parse(fs.readFileSync(OVERLAY_CONFIG_FILE, 'utf-8')) };
     }
-    res.json({ ...config, maxDuration });
+    res.json(success({ ...config, maxDuration }));
   } catch {
-    res.json({ offset: 0, fontSize: 32, opacity: 1, speed: 18, area: 25, maxDuration: 10800 });
+    res.json(success({ offset: 0, fontSize: 32, opacity: 1, speed: 18, area: 25, maxDuration: 10800 }));
   }
 });
 
@@ -614,34 +622,34 @@ app.put('/api/overlay-config', (req, res) => {
     const defaults = { offset: 0, fontSize: 32, opacity: 1, speed: 18, area: 25 };
     const config = { ...defaults, ...req.body };
     fs.writeFileSync(OVERLAY_CONFIG_FILE, JSON.stringify(config, null, 2));
-    res.json(config);
+    res.json(success(config));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json(fail(500, err.message));
   }
 });
 
 app.get('/api/folder-history', (req, res) => {
   try {
-    if (!fs.existsSync(FOLDER_HISTORY_FILE)) return res.json({});
-    res.json(JSON.parse(fs.readFileSync(FOLDER_HISTORY_FILE, 'utf-8')));
+    if (!fs.existsSync(FOLDER_HISTORY_FILE)) return res.json(success({}));
+    res.json(success(JSON.parse(fs.readFileSync(FOLDER_HISTORY_FILE, 'utf-8'))));
   } catch (err) {
-    res.json({});
+    res.json(success({}));
   }
 });
 
 app.put('/api/folder-history', (req, res) => {
   try {
     const { dir, name } = req.body;
-    if (!dir || name == null) return res.status(400).json({ error: '缺少参数' });
+    if (!dir || name == null) return res.status(400).json(fail(400, '缺少参数'));
     let history = {};
     if (fs.existsSync(FOLDER_HISTORY_FILE)) {
       history = JSON.parse(fs.readFileSync(FOLDER_HISTORY_FILE, 'utf-8'));
     }
     history[dir] = name;
     fs.writeFileSync(FOLDER_HISTORY_FILE, JSON.stringify(history, null, 2));
-    res.json({ success: true });
+    res.json(success(null));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json(fail(500, err.message));
   }
 });
 
@@ -652,10 +660,10 @@ app.get('/api/videos', (req, res) => {
     files.sort((a, b) =>
       a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
     );
-    res.json(files);
+    res.json(success(files));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: '无法读取文件列表' });
+    res.status(500).json(fail(500, '无法读取文件列表'));
   }
 });
 
@@ -663,21 +671,21 @@ app.put('/api/config', (req, res) => {
   try {
     const { videoDir } = req.body;
     if (!videoDir || typeof videoDir !== 'string') {
-      return res.status(400).json({ error: '缺少 videoDir 参数' });
+      return res.status(400).json(fail(400, '缺少 videoDir 参数'));
     }
     const resolved = path.resolve(videoDir);
     if (!fs.existsSync(resolved)) {
-      return res.status(400).json({ error: `目录不存在: ${resolved}` });
+      return res.status(400).json(fail(400, `目录不存在: ${resolved}`));
     }
     if (!fs.statSync(resolved).isDirectory()) {
-      return res.status(400).json({ error: `路径不是目录: ${resolved}` });
+      return res.status(400).json(fail(400, `路径不是目录: ${resolved}`));
     }
     VIDEO_DIR = resolved;
     console.log('VIDEO_DIR updated to:', VIDEO_DIR);
-    res.json({ videoDir: VIDEO_DIR });
+    res.json(success({ videoDir: VIDEO_DIR }));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: '更新配置失败' });
+    res.status(500).json(fail(500, '更新配置失败'));
   }
 });
 
@@ -717,10 +725,10 @@ app.get('/api/folders', (req, res) => {
     // 只保留直接包含视频文件的目录（不递归子目录）
     const folders = [{ path: FOLDERS_BASE, name: '(根目录)' }]
       .concat(allFolders.filter(f => hasDirectVideoFiles(f.path)));
-    res.json(folders);
+    res.json(success(folders));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: '读取文件夹列表失败' });
+    res.status(500).json(fail(500, '读取文件夹列表失败'));
   }
 });
 
@@ -752,7 +760,7 @@ app.get('/api/video-files', (req, res) => {
     if (folder) {
       const resolved = path.resolve(folder);
       if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
-        return res.status(400).json({ error: '非法目录路径' });
+        return res.status(400).json(fail(400, '非法目录路径'));
       }
       base = resolved;
       // Only scan direct children, not recursive
@@ -771,10 +779,10 @@ app.get('/api/video-files', (req, res) => {
       files = scanVideoFiles(FOLDERS_BASE);
     }
     files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
-    res.json(files);
+    res.json(success(files));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: '读取文件列表失败' });
+    res.status(500).json(fail(500, '读取文件列表失败'));
   }
 });
 
@@ -912,7 +920,7 @@ app.get('/stream', (req, res) => {
 
 app.post('/api/progress', (req, res) => {
   const { id, time } = req.body || {};
-  if (!id) return res.status(400).json({ error: '缺少ID' });
+  if (!id) return res.status(400).json(fail(400, '缺少ID'));
 
   const safeId = encodeURIComponent(String(id));
   const file = path.join(PLAYBACK_DIR, `${safeId}.json`);
@@ -923,24 +931,24 @@ app.post('/api/progress', (req, res) => {
     updatedAt: Date.now()
   }, null, 2));
 
-  res.json({ success: true });
+  res.json(success(null));
 });
 
 app.get('/api/progress', (req, res) => {
   const { id } = req.query;
-  if (!id) return res.status(400).json({ error: '缺少ID' });
+  if (!id) return res.status(400).json(fail(400, '缺少ID'));
 
   const safeId = encodeURIComponent(String(id));
   const file = path.join(PLAYBACK_DIR, `${safeId}.json`);
 
   if (!fs.existsSync(file)) {
-    return res.json({ time: 0 });
+    return res.json(success({ time: 0 }));
   }
 
   try {
-    res.json(JSON.parse(fs.readFileSync(file, 'utf-8')));
+    res.json(success(JSON.parse(fs.readFileSync(file, 'utf-8'))));
   } catch {
-    res.json({ time: 0 });
+    res.json(success({ time: 0 }));
   }
 });
 
@@ -949,16 +957,16 @@ app.post('/api/rename', async (req, res) => {
     const { folderPath, biliUrl } = req.body || {};
 
     if (!folderPath || !biliUrl) {
-      return res.status(400).json({ error: '缺少文件夹路径或B站链接' });
+      return res.status(400).json(fail(400, '缺少文件夹路径或B站链接'));
     }
 
     if (!fs.existsSync(folderPath)) {
-      return res.status(400).json({ error: '文件夹不存在' });
+      return res.status(400).json(fail(400, '文件夹不存在'));
     }
 
     const epId = extractEpId(biliUrl);
     if (!epId) {
-      return res.status(400).json({ error: '无法识别EP号' });
+      return res.status(400).json(fail(400, '无法识别EP号'));
     }
 
     const season = await fetchSeasonInfo(epId);
@@ -972,7 +980,7 @@ app.post('/api/rename', async (req, res) => {
       .sort();
 
     if (videoFiles.length === 0) {
-      return res.status(400).json({ error: '文件夹内没有视频文件' });
+      return res.status(400).json(fail(400, '文件夹内没有视频文件'));
     }
 
     const renamedFiles = [];
@@ -1016,15 +1024,14 @@ app.post('/api/rename', async (req, res) => {
     const mappingPath = path.join(folderPath, 'mapping.json');
     fs.writeFileSync(mappingPath, JSON.stringify(renamedFiles, null, 2));
 
-    res.json({
-      success: true,
+    res.json(success({
       seasonTitle,
       totalFiles: renamedFiles.length,
       renamedFiles
-    });
+    }));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || '重命名失败' });
+    res.status(500).json(fail(500, err.message || '重命名失败'));
   }
 });
 
@@ -1056,11 +1063,11 @@ app.post('/api/convert', (req, res) => {
   try {
     const { filePath } = req.body;
     if (!filePath || typeof filePath !== 'string') {
-      return res.status(400).json({ error: '缺少 filePath 参数' });
+      return res.status(400).json(fail(400, '缺少 filePath 参数'));
     }
     const resolvedPath = path.resolve(filePath);
     if (!fs.existsSync(resolvedPath)) {
-      return res.status(400).json({ error: `文件不存在: ${resolvedPath}` });
+      return res.status(400).json(fail(400, `文件不存在: ${resolvedPath}`));
     }
 
     const dir = path.dirname(resolvedPath);
@@ -1149,27 +1156,27 @@ app.post('/api/convert', (req, res) => {
       });
     }
 
-    res.json({ taskId, output: outputPath, duration: task.duration });
+    res.json(success({ taskId, output: outputPath, duration: task.duration }));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || '转换失败' });
+    res.status(500).json(fail(500, err.message || '转换失败'));
   }
 });
 
 app.get('/api/convert/status', (req, res) => {
   const { id } = req.query;
-  if (!id) return res.status(400).json({ error: '缺少任务ID' });
+  if (!id) return res.status(400).json(fail(400, '缺少任务ID'));
   const task = convertTasks.get(id);
   if (!task) {
     // 任务不在内存中，尝试从历史文件查找
     if (fs.existsSync(CONVERT_HISTORY_FILE)) {
       const history = JSON.parse(fs.readFileSync(CONVERT_HISTORY_FILE, 'utf-8'));
       const found = history.find(t => t.id === id);
-      if (found) return res.json(found);
+      if (found) return res.json(success(found));
     }
-    return res.status(404).json({ error: '任务不存在' });
+    return res.status(404).json(fail(404, '任务不存在'));
   }
-  res.json(task);
+  res.json(success(task));
 });
 
 app.get('/api/convert/history', (req, res) => {
@@ -1184,9 +1191,9 @@ app.get('/api/convert/history', (req, res) => {
     if (fs.existsSync(CONVERT_HISTORY_FILE)) {
       history = JSON.parse(fs.readFileSync(CONVERT_HISTORY_FILE, 'utf-8'));
     }
-    res.json([...running, ...history].slice(0, 20));
+    res.json(success([...running, ...history].slice(0, 20)));
   } catch (err) {
-    res.json([]);
+    res.json(success([]));
   }
 });
 

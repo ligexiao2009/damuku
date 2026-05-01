@@ -826,6 +826,13 @@
     let lastPerfTime = 0;
     let lastProgressSave = 0;
 
+    async function api(url, options) {
+      const res = await fetch(url, options);
+      const json = await res.json();
+      if (json.code !== 0) throw new Error(json.message || '请求失败');
+      return json.data;
+    }
+
     function createThumbPlaceholder(label) {
       const safe = String(label || '暂无缩略图')
         .replace(/&/g, '&amp;')
@@ -995,8 +1002,7 @@
     async function getPlaybackProgress(id) {
       if (!id) return 0;
       try {
-        const res = await fetch(`/api/progress?id=${encodeURIComponent(id)}`);
-        const data = await res.json();
+        const data = await api(`/api/progress?id=${encodeURIComponent(id)}`);
         return Number(data.time || 0);
       } catch (err) {
         console.error('获取播放记录失败:', err);
@@ -1425,8 +1431,7 @@
       const loadingToast = toast('正在加载弹幕...', 0);
       const progressTimer = setInterval(async () => {
         try {
-          const r = await fetch(`/api/danmu/progress?id=${encodeURIComponent(videoId)}`);
-          const p = await r.json();
+          const p = await api(`/api/danmu/progress?id=${encodeURIComponent(videoId)}`);
           if (p) {
             const phase = p.phase === 'retrying' ? '重试' : '加载';
             loadingToast.textContent = `正在${phase}弹幕... ${p.current}/${p.total}`;
@@ -1438,9 +1443,7 @@
         const params = new URLSearchParams({ id: videoId, strategy: strategySelect.value });
         if (forceRefresh) params.set('refresh', '1');
 
-        const res = await fetch(`/api/danmu?${params.toString()}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '弹幕加载失败');
+        const data = await api(`/api/danmu?${params.toString()}`);
 
         danmus = data.danmus.sort((a, b) => a.time - b.time);
         danmuIndex = 0;
@@ -1514,8 +1517,7 @@
 
     async function readFolderHistory() {
       try {
-        const res = await fetch('/api/folder-history');
-        return await res.json();
+        return await api('/api/folder-history') || {};
       } catch { return {}; }
     }
 
@@ -1531,8 +1533,7 @@
 
     async function loadServerVideos() {
       try {
-        const res = await fetch('/api/videos');
-        const fileNames = await res.json();
+        const fileNames = await api('/api/videos');
 
         if (!fileNames || fileNames.length === 0) {
           return toast('服务器当前目录下没有找到视频文件！');
@@ -1566,8 +1567,7 @@
 
     async function loadFolders() {
       try {
-        const res = await fetch('/api/folders');
-        const folders = await res.json();
+        const folders = await api('/api/folders');
         folderSelect.innerHTML = '';
         if (!folders || folders.length === 0) {
           folderSelect.innerHTML = '<option value="">-- 无可用目录 --</option>';
@@ -1589,20 +1589,16 @@
       const dir = folderSelect.value;
       if (!dir) return;
       try {
-        const res = await fetch('/api/config', {
+        await api('/api/config', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ videoDir: dir })
         });
-        if (!res.ok) {
-          const data = await res.json();
-          return toast(data.error || '切换目录失败');
-        }
         currentVideoDir = dir;
         await loadServerVideos();
       } catch (err) {
         console.error('切换目录失败:', err);
-        toast('切换目录失败');
+        toast(err.message || '切换目录失败');
       }
     });
 

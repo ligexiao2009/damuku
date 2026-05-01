@@ -170,10 +170,16 @@
     const folderPathInput = document.getElementById('folderPath');
     const folderSelect = document.getElementById('folderSelect');
 
+    async function api(url, options) {
+      const res = await fetch(url, options);
+      const json = await res.json();
+      if (json.code !== 0) throw new Error(json.message || '请求失败');
+      return json.data;
+    }
+
     async function loadFolders() {
       try {
-        const res = await fetch('/api/folders');
-        const folders = await res.json();
+        const folders = await api('/api/folders');
         folderSelect.innerHTML = '<option value=””>-- 请选择目录 --</option>';
         if (!folders || folders.length === 0) {
           folderSelect.innerHTML = '<option value=””>-- 无可用目录 --</option>';
@@ -205,8 +211,7 @@
 
     async function loadConvertFolders() {
       try {
-        const res = await fetch('/api/video-files');
-        const files = await res.json();
+        const files = await api('/api/video-files');
         convertFolderSelect.innerHTML = '<option value="">-- 请选择视频文件 --</option>';
         if (!files || files.length === 0) {
           convertFolderSelect.innerHTML = '<option value="">-- 无视频文件 --</option>';
@@ -234,8 +239,7 @@
 
     async function loadConvertHistory() {
       try {
-        const res = await fetch('/api/convert/history');
-        const history = await res.json();
+        const history = await api('/api/convert/history');
         if (!history || history.length === 0) return;
 
         const last = history[0];
@@ -262,8 +266,7 @@
       if (pollingTimer) clearInterval(pollingTimer);
       pollingTimer = setInterval(async () => {
         try {
-          const sr = await fetch(`/api/convert/status?id=${encodeURIComponent(taskId)}`);
-          const st = await sr.json();
+          const st = await api(`/api/convert/status?id=${encodeURIComponent(taskId)}`);
           if (st.status === 'interrupted') {
             clearInterval(pollingTimer);
             convertFilePathInput.value = st.input || '';
@@ -312,13 +315,11 @@
       convertStatus.innerHTML = '<span class="running">正在获取视频信息...</span>';
 
       try {
-        const res = await fetch('/api/convert', {
+        const data = await api('/api/convert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filePath })
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '启动转换失败');
 
         startPolling(data.taskId);
       } catch (err) {
@@ -356,7 +357,7 @@
       resultBox.textContent = '处理中，请稍候...';
 
       try {
-        const res = await fetch('/api/rename', {
+        const data = await api('/api/rename', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -366,12 +367,6 @@
             biliUrl
           })
         });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || '处理失败');
-        }
 
         resultBox.textContent = JSON.stringify(data, null, 2);
 

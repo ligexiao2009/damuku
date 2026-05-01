@@ -6,6 +6,13 @@
 (function () {
   const SERVER = `http://${location.hostname}:${location.port || 3000}`;
 
+  async function api(url, options) {
+    const res = await fetch(url, options);
+    const json = await res.json();
+    if (json.code !== 0) throw new Error(json.message || '请求失败');
+    return json.data;
+  }
+
   // DOM
   const danmakuLayer = document.getElementById('danmaku-layer');
   const controlPanel = document.getElementById('control-panel');
@@ -60,8 +67,7 @@
   // --- Load saved config from server ---
   async function loadConfig() {
     try {
-      const res = await fetch(`${SERVER}/api/overlay-config`);
-      const cfg = await res.json();
+      const cfg = await api(`${SERVER}/api/overlay-config`);
       if (cfg.maxDuration) {
         maxDuration = cfg.maxDuration;
         seekBar.max = maxDuration;
@@ -90,8 +96,7 @@
 
   async function readFolderHistory() {
     try {
-      const res = await fetch(`${SERVER}/api/folder-history`);
-      return await res.json();
+      return await api(`${SERVER}/api/folder-history`) || {};
     } catch { return {}; }
   }
 
@@ -134,9 +139,7 @@
     }
     setStatus('加载弹幕中...');
     try {
-      const res = await fetch(`${SERVER}/api/danmu?id=${encodeURIComponent(bvid)}&strategy=seg.so`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '加载失败');
+      const data = await api(`${SERVER}/api/danmu?id=${encodeURIComponent(bvid)}&strategy=seg.so`);
       engine.load(data.danmus);
       currentBvid = bvid;
       setStatus(`已加载 ${data.danmus.length} 条弹幕 · ${bvid}`);
@@ -493,8 +496,7 @@
 
   async function loadFolders() {
     try {
-      const res = await fetch(`${SERVER}/api/folders`);
-      const folders = await res.json();
+      const folders = await api(`${SERVER}/api/folders`);
       folderSelect.innerHTML = '<option value="">-- 选择文件夹 --</option>';
       if (!folders || !folders.length) return;
       folders.forEach(f => {
@@ -524,8 +526,7 @@
   async function loadFilesForFolder(folderPath) {
     videoFileSelect.innerHTML = '<option value="">-- 加载中... --</option>';
     try {
-      const res = await fetch(`${SERVER}/api/video-files?folder=${encodeURIComponent(folderPath)}`);
-      const files = await res.json();
+      const files = await api(`${SERVER}/api/video-files?folder=${encodeURIComponent(folderPath)}`);
       videoFileSelect.innerHTML = '<option value="">-- 选择视频文件 --</option>';
       if (!files || !files.length) return;
       files.forEach(f => {
