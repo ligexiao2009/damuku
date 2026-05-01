@@ -11,6 +11,7 @@ const { detectVideoIdFromName, sanitizeFileName, extractEpisodeNumberFromFileNam
 const { fetchVideoMeta, fetchSeasonInfo, fetchDanmuXml, fetchDanmuSeg, fetchBiliCover, downloadImage } = require('./services/bilibili');
 const { parseDanmu, tryParseDanmuSeg } = require('./services/danmu');
 const { fetchTencentDanmaku } = require('./services/tencent');
+const { fetchMangoDanmaku } = require('./services/mango');
 const { streamDirect, transcodeStream, generateLocalThumb } = require('./services/ffmpeg');
 
 const app = express();
@@ -276,9 +277,10 @@ app.get('/api/danmaku', async (req, res) => {
     if (source === 'qq') {
       const vid = id;
       const durMs = Number(duration) || 3600000;
+      const forceRefresh = req.query.refresh === '1';
       const cacheFile = path.join(DANMU_DIR, `qq_${vid}.json`);
 
-      if (fs.existsSync(cacheFile)) {
+      if (!forceRefresh && fs.existsSync(cacheFile)) {
         const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
         return res.json(success({ ...cached, fromCache: true }));
       }
@@ -372,7 +374,30 @@ app.get('/api/danmaku', async (req, res) => {
       return res.json(success(result));
     }
 
-    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq'));
+    // 芒果TV弹幕
+    if (source === 'mango') {
+      const parts = id.split('/');
+      const timeStr = parts[0] || '000000';
+      const videoId = parts[1] || id;
+      const forceRefresh = req.query.refresh === '1';
+      const cacheFile = path.join(DANMU_DIR, `mango_${timeStr}_${videoId}.json`);
+
+      if (!forceRefresh && fs.existsSync(cacheFile)) {
+        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+        return res.json(success({ ...cached, fromCache: true }));
+      }
+
+      console.log(`[mango] 抓取弹幕 videoId: ${videoId} time: ${timeStr}`);
+      console.time('[mango] 耗时');
+      const danmus = await fetchMangoDanmaku(videoId, undefined, timeStr);
+      console.timeEnd('[mango] 耗时');
+
+      const result = { source: 'mango', id: videoId, count: danmus.length, danmus };
+      fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
+      return res.json(success(result));
+    }
+
+    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango'));
   } catch (err) {
     const { id, source } = req.query;
     if (source === 'bili') {

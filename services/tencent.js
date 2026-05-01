@@ -27,10 +27,17 @@ async function fetchTencentDanmaku(vid, durationMs) {
 
       for (const d of list) {
         if (!d.content) continue;
+        let color = '#ffffff';
+        try {
+          const style = JSON.parse(d.content_style || '{}');
+          const gradient = style.gradient_colors;
+          const c = (Array.isArray(gradient) && gradient[0]) ? gradient[0] : style.color;
+          if (c) color = '#' + c;
+        } catch {}
         result.push({
           text: d.content,
           time: d.time_offset / 1000,
-          color: '#ffffff',
+          color,
           mode: 'scroll',
           ctime: d.create_time,
         });

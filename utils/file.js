@@ -87,8 +87,9 @@ function getCacheFilePaths(cacheKey, strategy, danmuDir) {
 function getThumbPath(fileName, thumbDir) {
   if (!fileName) return null;
   const safeBaseName = path.basename(fileName);
-  const encodedName = encodeURIComponent(safeBaseName).replace(/%/g, '_');
-  return path.join(thumbDir, `${encodedName}.jpg`);
+  // 只替换文件系统不允许的字符，保留中文
+  const safe = safeBaseName.replace(/[:\/\\\*\?"<>\|]/g, '_');
+  return path.join(thumbDir, `${safe}.jpg`);
 }
 
 module.exports = {

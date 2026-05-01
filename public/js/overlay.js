@@ -111,6 +111,31 @@
     } catch { /* ignore */ }
   }
 
+  let currentVideoFileName = '';
+
+  function saveCurrentTime() {
+    if (!currentVideoFileName) return;
+    const time = isRunning ? getSimulatedTime() : simTime;
+    if (time <= 0) return;
+    fetch(`${SERVER}/api/progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: currentVideoFileName, time: Math.round(time) })
+    }).catch(() => {});
+  }
+
+  async function restorePlayTime(fileName) {
+    currentVideoFileName = fileName;
+    try {
+      const data = await api(`${SERVER}/api/progress?id=${encodeURIComponent(fileName)}`);
+      if (data && data.time > 0) {
+        seekTo(data.time);
+        updateTimeDisplay();
+        setStatus(`恢复播放时间 ${formatTime(data.time)}`);
+      }
+    } catch { /* ignore */ }
+  }
+
   // --- Sync UI sliders with engine ---
   function syncControlsFromEngine() {
     const cfg = engine.getConfig();
@@ -139,7 +164,7 @@
       return;
     }
     const source = sourceSelect.value;
-    const label = source === 'qq' ? '腾讯' : 'B站';
+    const label = { bili: 'B站', qq: '腾讯', mango: '芒果' }[source] || source;
     setStatus(`加载${label}弹幕中...`);
     try {
       const params = new URLSearchParams({ source, id });
@@ -174,6 +199,7 @@
     isRunning = false;
     simTime = getSimulatedTime();
     engine.pause();
+    saveCurrentTime();
     playPauseBtn.textContent = '开始';
     playPauseBtn.classList.remove('primary');
     updateTimeDisplay();
@@ -197,6 +223,7 @@
     simTime = Math.max(0, Math.min(seconds, maxDuration));
     simStartPerf = performance.now();
     engine.seek(simTime);
+    saveCurrentTime();
     if (isRunning) engine.resume(simTime);
   }
 
@@ -286,10 +313,11 @@
   });
 
   sourceSelect.addEventListener('change', () => {
-    bvidInput.placeholder = sourceSelect.value === 'qq' ? '输入 VID' : '输入 BV 号或 EP 号';
+    const src = sourceSelect.value;
+    bvidInput.placeholder = src === 'bili' ? '输入 BV 号或 EP 号' : src === 'qq' ? '输入 VID' : '输入 HHMMSS/videoId';
     const name = videoFileSelect.value || bvidInput.value;
     if (name) {
-      bvidInput.value = getVideoIdForSource(name, sourceSelect.value);
+      bvidInput.value = getVideoIdForSource(name, src);
     }
   });
 
@@ -588,15 +616,30 @@
     loadFilesForFolder(folder);
   });
 
-  videoFileSelect.addEventListener('change', () => {
+  videoFileSelect.addEventListener('change', async () => {
     const selected = videoFileSelect.value;
     if (!selected) return;
-    const vid = detectVideoId(selected);
-    if (vid) bvidInput.value = vid;
+    // 保存旧视频的播放时间
+    saveCurrentTime();
+    // 自动检测弹幕源
+    const biliId = detectVideoId(selected);
+    const tencentId = detectVid(selected);
+    if (tencentId && !biliId) {
+      sourceSelect.value = 'qq';
+      bvidInput.value = tencentId;
+    } else if (biliId) {
+      sourceSelect.value = 'bili';
+      bvidInput.value = biliId;
+    } else {
+      bvidInput.value = tencentId || biliId || '';
+    }
+    sourceSelect.dispatchEvent(new Event('change'));
     const folder = folderSelect.value;
     if (folder && selected) {
       saveFolderHistory(folder, selected);
     }
+    // 恢复新视频的播放时间
+    await restorePlayTime(selected);
   });
 
   // --- Panel dragging ---

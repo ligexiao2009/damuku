@@ -652,9 +652,10 @@
         <input type="file" id="videoFile" accept="video/*" multiple>
         <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
         <button id="pickFolderBtn">选择文件夹</button>
-        <select id="sourceSelect" title="弹幕源" style="flex:0 0 88px">
+        <select id="sourceSelect" title="弹幕源" style="flex:0 0 92px">
           <option value="bili">B站弹幕</option>
           <option value="qq">腾讯弹幕</option>
+          <option value="mango">芒果弹幕</option>
         </select>
         <input type="text" id="bvidInput" placeholder="输入BV号、ep号或VID">
          <button id="renamePageBtn">tools</button>
@@ -1070,7 +1071,7 @@
     }
 
     function updateStatusBar({ count, fromCache, forceRefresh, fileName } = {}) {
-      statusStrategy.textContent = sourceSelect.value === 'qq' ? '腾讯' : strategySelect.value;
+      statusStrategy.textContent = sourceSelect.value === 'bili' ? strategySelect.value : { bili: 'B站', qq: '腾讯', mango: '芒果' }[sourceSelect.value] || sourceSelect.value;
       statusCount.textContent = String(count ?? danmus.length ?? 0);
       statusCache.textContent = fromCache == null ? '未加载' : (fromCache ? '命中' : '重拉');
       statusRefresh.textContent = forceRefresh ? '是' : '否';
@@ -1458,7 +1459,7 @@
       }
 
       const source = sourceSelect.value;
-      const sourceLabel = source === 'qq' ? '腾讯' : 'B站';
+      const sourceLabel = { bili: 'B站', qq: '腾讯', mango: '芒果' }[source] || source;
       const loadingToast = toast(`正在加载${sourceLabel}弹幕...`, 0);
 
       if (source === 'bili') {
@@ -1552,7 +1553,20 @@
 
       updatePlayerSize();
 
-      const autoVideoId = item.videoId || detectVideoIdFromName(item.file.name);
+      const name = item.file.name;
+      const biliId = detectVideoIdFromName(name);
+      const tencentId = detectVidFromName(name);
+      let autoVideoId;
+      if (tencentId && !biliId) {
+        sourceSelect.value = 'qq';
+        autoVideoId = tencentId;
+      } else if (biliId) {
+        sourceSelect.value = 'bili';
+        autoVideoId = biliId;
+      } else {
+        autoVideoId = item.videoId || biliId || tencentId || '';
+      }
+      sourceSelect.dispatchEvent(new Event('change'));
       bvidInput.value = autoVideoId;
       if (autoVideoId) {
         await applyDanmuForVideoId(autoVideoId, { showAlert: false, forceRefresh: forceRefreshDanmu });
@@ -1718,11 +1732,12 @@
     refreshDanmuBtn.addEventListener('click', () => applyDanmuForVideoId(bvidInput.value.trim(), { forceRefresh: true }));
 
     sourceSelect.addEventListener('change', () => {
-      const isQQ = sourceSelect.value === 'qq';
-      strategySelect.style.display = isQQ ? 'none' : '';
-      bvidInput.placeholder = isQQ ? '输入VID' : '输入BV号、ep号';
+      const src = sourceSelect.value;
+      const isBili = src === 'bili';
+      strategySelect.style.display = isBili ? '' : 'none';
+      bvidInput.placeholder = isBili ? '输入BV号、ep号' : src === 'qq' ? '输入VID' : '输入HHMMSS/videoId';
       if (currentVideoName && currentVideoName !== '未选择') {
-        bvidInput.value = getVideoIdForSource(currentVideoName, sourceSelect.value);
+        bvidInput.value = getVideoIdForSource(currentVideoName, src);
       }
       updateStatusBar();
     });
