@@ -131,7 +131,7 @@ function registerShortcuts() {
     'CmdOrCtrl+Shift+Up':    'shortcut:fontsize-up',
     'CmdOrCtrl+Shift+Down':  'shortcut:fontsize-down',
     'CmdOrCtrl+O':           'shortcut:toggle-panel',
-    'CmdOrCtrl+Esc':         'shortcut:toggle-panel',
+    'Esc':                   'shortcut:toggle-panel',
     'CmdOrCtrl+L':           'shortcut:load-danmaku'
   };
 

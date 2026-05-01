@@ -261,7 +261,8 @@ class DanmakuEngine {
       const a = this._active[i];
       const elapsed = now - a.startMs;
       if (elapsed >= a.durationMs) {
-        // Finished — return to pool
+        // Finished — move offscreen then return to pool
+        a.el.style.transform = 'translate3d(-9999px, -9999px, 0)';
         this._pool.push(a.el);
         this._active.splice(i, 1);
       } else {
