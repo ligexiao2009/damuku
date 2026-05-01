@@ -400,7 +400,7 @@ app.get('/api/danmaku', async (req, res) => {
 
     // 直播吧弹幕（实时轮询）
     if (source === 'zhibo8') {
-      const matchId = id;
+      const matchId = (id || '').replace(/\D/g, '');
       const type = req.query.type || 'zuqiu';
       console.log(`[zhibo8] 查询弹幕 matchId: ${matchId} type: ${type}`);
       const danmus = await fetchZhibo8Danmaku(matchId, type);
