@@ -25,18 +25,27 @@
         <option value="bili">B站弹幕</option>
         <option value="qq">腾讯弹幕</option>
         <option value="mango">芒果弹幕</option>
+        <option value="zhibo8">直播吧</option>
       </select>
       <input type="text" id="bvid-input" placeholder="输入 BV 号或 EP 号...">
       <button id="load-btn" class="primary">加载弹幕</button>
     </div>
 
-    <div class="panel-row">
+    <div class="panel-row" id="zhibo8-type-row" style="display:none;">
+      <select id="zhibo8-type-select">
+        <option value="zuqiu">足球</option>
+        <option value="nba">NBA</option>
+        <option value="other">其他</option>
+      </select>
+    </div>
+
+    <div class="panel-row" id="folder-row">
       <select id="folder-select" style="flex:1 1 100px;min-width:0;">
         <option value="">-- 选择文件夹 --</option>
       </select>
     </div>
 
-    <div class="panel-row">
+    <div class="panel-row" id="video-file-row">
       <select id="video-file-select" style="flex:1 1 100px;min-width:0;">
         <option value="">-- 选择视频文件 --</option>
       </select>

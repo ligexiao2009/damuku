@@ -107,6 +107,11 @@ class DanmakuEngine {
     this._clear();
   }
 
+  append(danmus) {
+    if (!danmus.length) return;
+    this.danmus = [...this.danmus, ...danmus].sort((a, b) => a.time - b.time);
+  }
+
   reset() {
     this.danmuIndex = 0;
     this._clear();

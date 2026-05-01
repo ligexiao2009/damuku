@@ -18,6 +18,10 @@
   const controlPanel = document.getElementById('control-panel');
   const bvidInput = document.getElementById('bvid-input');
   const sourceSelect = document.getElementById('source-select');
+  const zhibo8TypeSelect = document.getElementById('zhibo8-type-select');
+  const zhibo8TypeRow = document.getElementById('zhibo8-type-row');
+  const folderRow = document.getElementById('folder-row');
+  const videoFileRow = document.getElementById('video-file-row');
   const loadBtn = document.getElementById('load-btn');
   const playPauseBtn = document.getElementById('play-pause-btn');
   const offsetSlider = document.getElementById('offset-slider');
@@ -64,6 +68,7 @@
   let maxDuration = 10800; // 3 hours, updated from server config
   let isSeeking = false;   // pause time updates while user drags
   let lastFolder = '';
+  let zhibo8Timer = null;
 
   // --- Load saved config from server ---
   async function loadConfig() {
@@ -164,7 +169,36 @@
       return;
     }
     const source = sourceSelect.value;
-    const label = { bili: 'B站', qq: '腾讯', mango: '芒果' }[source] || source;
+    const label = { bili: 'B站', qq: '腾讯', mango: '芒果', zhibo8: '直播吧' }[source] || source;
+
+    clearZhibo8Poll();
+
+    if (source === 'zhibo8') {
+      setStatus(`开始轮询${label}弹幕...`);
+      currentBvid = id;
+
+      const poll = async () => {
+        try {
+          const type = zhibo8TypeSelect.value;
+          const params = new URLSearchParams({ source, id, type });
+          const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
+          if (data.danmus.length) {
+            const now = getSimulatedTime();
+            for (const d of data.danmus) d.time = now;
+            engine.append(data.danmus);
+            if (!isRunning) startSimulation();
+            setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${id}`);
+          }
+        } catch (err) {
+          setStatus(`轮询失败: ${err.message}`);
+        }
+      };
+
+      poll();
+      zhibo8Timer = setInterval(poll, 2000);
+      return;
+    }
+
     setStatus(`加载${label}弹幕中...`);
     try {
       const params = new URLSearchParams({ source, id });
@@ -176,6 +210,13 @@
       setStatus(`已加载 ${data.danmus.length} 条弹幕 · ${id}`);
     } catch (err) {
       setStatus(`加载失败: ${err.message}`);
+    }
+  }
+
+  function clearZhibo8Poll() {
+    if (zhibo8Timer) {
+      clearInterval(zhibo8Timer);
+      zhibo8Timer = null;
     }
   }
 
@@ -314,7 +355,15 @@
 
   sourceSelect.addEventListener('change', () => {
     const src = sourceSelect.value;
-    bvidInput.placeholder = src === 'bili' ? '输入 BV 号或 EP 号' : src === 'qq' ? '输入 VID' : '输入 HHMMSS/videoId';
+    clearZhibo8Poll();
+    const isZhibo8 = src === 'zhibo8';
+    zhibo8TypeRow.style.display = isZhibo8 ? '' : 'none';
+    folderRow.style.display = isZhibo8 ? 'none' : '';
+    videoFileRow.style.display = isZhibo8 ? 'none' : '';
+    if (src === 'bili') bvidInput.placeholder = '输入 BV 号或 EP 号';
+    else if (src === 'qq') bvidInput.placeholder = '输入 VID';
+    else if (src === 'mango') bvidInput.placeholder = '输入 HHMMSS/videoId';
+    else bvidInput.placeholder = '输入比赛ID';
     const name = videoFileSelect.value || bvidInput.value;
     if (name) {
       bvidInput.value = getVideoIdForSource(name, src);

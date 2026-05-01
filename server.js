@@ -12,6 +12,7 @@ const { fetchVideoMeta, fetchSeasonInfo, fetchDanmuXml, fetchDanmuSeg, fetchBili
 const { parseDanmu, tryParseDanmuSeg } = require('./services/danmu');
 const { fetchTencentDanmaku } = require('./services/tencent');
 const { fetchMangoDanmaku } = require('./services/mango');
+const { fetchZhibo8Danmaku } = require('./services/zhibo8');
 const { streamDirect, transcodeStream, generateLocalThumb } = require('./services/ffmpeg');
 
 const app = express();
@@ -397,8 +398,18 @@ app.get('/api/danmaku', async (req, res) => {
       return res.json(success(result));
     }
 
-    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango'));
+    // 直播吧弹幕（实时轮询）
+    if (source === 'zhibo8') {
+      const matchId = id;
+      const type = req.query.type || 'zuqiu';
+      console.log(`[zhibo8] 查询弹幕 matchId: ${matchId} type: ${type}`);
+      const danmus = await fetchZhibo8Danmaku(matchId, type);
+      return res.json(success({ source: 'zhibo8', id: matchId, count: danmus.length, danmus }));
+    }
+
+    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango, zhibo8'));
   } catch (err) {
+    console.error(`[${req.query.source}] 弹幕请求失败:`, err.message);
     const { id, source } = req.query;
     if (source === 'bili') {
       const ck = (id || '').toUpperCase().startsWith('BV') ? id : `ep${String(id || '').replace(/^ep/i, '')}`;
