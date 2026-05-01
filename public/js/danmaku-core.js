@@ -88,6 +88,17 @@ class DanmakuEngine {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
+  _formatSendTime(ctime) {
+    if (!ctime || ctime <= 0) return '';
+    const d = new Date(ctime * 1000);
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const DD = String(d.getDate()).padStart(2, '0');
+    const HH = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const YY = String(d.getFullYear()).slice(-2);
+    return `${YY}-${MM}-${DD} ${HH}:${mm}`;
+  }
+
   // --- Data loading ---
 
   load(danmus) {
@@ -181,7 +192,9 @@ class DanmakuEngine {
     if (!this._width || !this._height) return false;
 
     const fontSize = this.fontSize;
-    const text = this.showTimestamps ? `[${this._formatDanmuTime(danmu.time)}] ${danmu.text}` : danmu.text;
+    const text = this.showTimestamps
+      ? `[${this._formatDanmuTime(danmu.time)}${danmu.ctime ? ' | ' + this._formatSendTime(danmu.ctime) : ''}] ${danmu.text}`
+      : danmu.text;
     const danmuWidth = this._measureWidth(text, fontSize);
 
     const areaRatio = this.area / 100;

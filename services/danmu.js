@@ -42,6 +42,7 @@ function parseDanmu(xml) {
       mode: parseInt(p[1] || '1', 10),
       size: parseInt(p[2] || '25', 10),
       color: '#' + parseInt(p[3] || '16777215', 10).toString(16).padStart(6, '0'),
+      ctime: parseInt(p[4] || '0', 10),
       text: item['#text'] || ''
     };
   }).filter(d => d.text);
@@ -55,6 +56,7 @@ function parseDanmuSeg(buffer) {
     mode: Number(item.mode || 1),
     size: Number(item.fontsize || 25),
     color: '#' + Number(item.color || 16777215).toString(16).padStart(6, '0'),
+    ctime: Number(item.ctime || 0),
     text: item.content || ''
   })).filter(d => d.text);
 }

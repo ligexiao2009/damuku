@@ -929,9 +929,21 @@
       return `${base}.${tenth}`;
     }
 
+    function formatSendTime(ctime) {
+      if (!ctime || ctime <= 0) return '';
+      const d = new Date(ctime * 1000);
+      const MM = String(d.getMonth() + 1).padStart(2, '0');
+      const DD = String(d.getDate()).padStart(2, '0');
+      const HH = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const YY = String(d.getFullYear()).slice(-2);
+      return `${YY}-${MM}-${DD} ${HH}:${mm}`;
+    }
+
     function getDanmuDisplayText(danmu) {
       if (statusBar.classList.contains('hidden')) return danmu.text;
-      return `[${formatDanmuTime(danmu.time)}] ${danmu.text}`;
+      const sendInfo = danmu.ctime ? ` | ${formatSendTime(danmu.ctime)}` : '';
+      return `[${formatDanmuTime(danmu.time)}${sendInfo}] ${danmu.text}`;
     }
 
     function updatePlaybackStatus(currentTime = video.currentTime) {
