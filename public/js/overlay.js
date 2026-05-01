@@ -184,7 +184,10 @@
           const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
           if (data.danmus.length) {
             const now = getSimulatedTime();
-            for (const d of data.danmus) d.time = now;
+            for (const d of data.danmus) {
+              d.time = now;
+              if (d.rawTime) d.ctime = new Date(d.rawTime).getTime() / 1000;
+            }
             engine.append(data.danmus);
             if (!isRunning) startSimulation();
             setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${id}`);
