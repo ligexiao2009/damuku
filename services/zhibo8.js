@@ -50,12 +50,14 @@ async function fetchZhibo8Danmaku(matchId, type = 'zuqiu', lastMaxId = 0) {
   for (const item of list) {
     const id = Number(item.id);
     if (id > lastMaxId) {
+      const room = Number(item.room || 1);
       newItems.push({
         text: String(item.content || ''),
         time: 0,
-        color: '#ffffff',
+        color: room === 2 ? '#ffcc00' : '#ffffff',
         mode: 1,
         rawTime: item.createtime,
+        room,
       });
       if (id > maxId) maxId = id;
     }
