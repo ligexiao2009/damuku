@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Danmaku Overlay Plus</title>
+  <!-- 引入 HLS 播放支持 -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="css/overlay.css">
+  <style>
+    /* 容器：用于全屏 */
+    #app-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* 视频背景层 */
+    #video-background {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      background: black;
+    }
+
+    /* 弹幕渲染层 */
+    #danmaku-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* 状态指示点 */
+    #status-indicator {
+      z-index: 20;
+    }
+
+    /* 控制面板 */
+    #control-panel {
+      z-index: 100;
+      /* 确保面板在有滚动条时也能正常显示 */
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    /* 直播流地址输入框样式 */
+    .live-input-row {
+      background: rgba(255, 77, 122, 0.1);
+      padding: 8px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255, 77, 122, 0.3);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-container">
+    <!-- 1. 视频播放层 -->
+    <video id="video-background" playsinline webkit-playsinline></video>
+
+    <!-- 2. 弹幕渲染层 -->
+    <div id="danmaku-layer"></div>
+
+    <!-- 3. 状态指示器 -->
+    <div id="status-indicator" title="Danmaku Overlay 运行中"></div>
+
+    <!-- 4. 控制面板 (完整保留原 overlay.html 结构以防 JS 报错) -->
+    <div id="control-panel">
+      <div class="panel-drag-handle" id="panel-drag-handle">
+        <span>控制面板 & 直播流</span>
+        <span style="font-size:10px;color:#666;">拖拽移动 · 双击归位</span>
+      </div>
+
+      <!-- 新增：直播流地址输入 -->
+      <div class="panel-row live-input-row">
+        <input type="text" id="streamUrl" placeholder="输入 M3U8 直播地址..." style="flex:1;">
+        <button id="paste-stream-btn" title="粘贴直播地址">📋</button>
+        <button id="live-load-btn" style="background:#ff4d7a; color:white;">播放直播</button>
+        <button id="full-screen-btn">全屏</button>
+      </div>
+
+      <div class="panel-row">
+        <select id="source-select">
+          <option value="zhibo8" selected>直播吧</option>
+          <option value="bili">B站弹幕</option>
+          <option value="qq">腾讯弹幕</option>
+          <option value="mango">芒果弹幕</option>
+        </select>
+        <input type="text" id="bvid-input" placeholder="输入 BV 号或 EP 号...">
+        <button id="load-btn" class="primary">加载弹幕</button>
+      </div>
+
+      <div class="panel-row" id="zhibo8-type-row" style="display:none;">
+        <select id="zhibo8-type-select">
+          <option value="nba">NBA</option>
+          <option value="zuqiu">足球</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+
+      <div class="panel-row" id="folder-row">
+        <select id="folder-select" style="flex:1 1 100px;min-width:0;">
+          <option value="">-- 选择文件夹 --</option>
+        </select>
+      </div>
+
+      <div class="panel-row" id="video-file-row">
+        <select id="video-file-select" style="flex:1 1 100px;min-width:0;">
+          <option value="">-- 选择视频文件 --</option>
+        </select>
+      </div>
+
+      <div class="panel-row" style="display:none">
+        <label for="seek-bar">进度</label>
+        <input type="range" id="seek-bar" min="0" max="10800" value="0" step="1">
+        <span class="val" id="seek-time">00:00</span>
+      </div>
+
+      <div class="panel-row" style="display:none">
+        <label for="time-input">跳转</label>
+        <input type="text" id="time-input" placeholder="1:23:45 或 90" style="flex:1 1 80px;text-align:center;">
+        <button id="jump-btn">跳转</button>
+      </div>
+
+      <div id="settings-group" style="display:none;">
+        <div class="panel-row">
+          <label for="offset-slider">偏移</label>
+          <input type="range" id="offset-slider" min="-120" max="120" value="0" step="1">
+          <span class="val" id="offset-val">0s</span>
+        </div>
+
+        <div class="panel-row">
+          <label for="fontsize-slider">字号</label>
+          <input type="range" id="fontsize-slider" min="14" max="72" value="32" step="1">
+          <span class="val" id="fontsize-val">32px</span>
+        </div>
+
+        <div class="panel-row">
+          <label for="opacity-slider">透明度</label>
+          <input type="range" id="opacity-slider" min="0.1" max="1" value="1" step="0.05">
+          <span class="val" id="opacity-val">100%</span>
+        </div>
+
+        <div class="panel-row">
+          <label for="speed-slider">速度</label>
+          <input type="range" id="speed-slider" min="8" max="40" value="18" step="1">
+          <span class="val" id="speed-val">18s</span>
+        </div>
+
+        <div class="panel-row">
+          <label for="area-slider">区域</label>
+          <input type="range" id="area-slider" min="10" max="100" value="25" step="5">
+          <span class="val" id="area-val">25%</span>
+        </div>
+      </div>
+
+      <div class="panel-row actions">
+        <button id="play-pause-btn" class="primary">开始</button>
+        <button id="settings-btn">弹幕设置</button>
+        <button id="reset-btn">重置</button>
+        <button id="timestamp-btn">显示时间戳</button>
+        <button id="exit-btn" class="danger">退出</button>
+      </div>
+
+      <div id="status-text"></div>
+
+      <div style="font-size:10px;color:#555;text-align:center;margin-top:4px;">
+        Space 暂停 · ← → 微调 · Shift+← → 大调 · ↑ ↓ 透明度 · O 面板 · ESC 隐藏面板
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/danmaku-core.js"></script>
+  
+  <script>
+    /**
+     * 整合视频播放逻辑
+     */
+    const video = document.getElementById('video-background');
+    const streamInput = document.getElementById('streamUrl');
+    const liveLoadBtn = document.getElementById('live-load-btn');
+    const fullScreenBtn = document.getElementById('full-screen-btn');
+    const appContainer = document.getElementById('app-container');
+    const statusText = document.getElementById('status-text');
+
+    let hls;
+
+    async function loadStream() {
+      const url = streamInput.value.trim();
+      if (!url) {
+        if(statusText) statusText.textContent = '请输入直播地址';
+        return;
+      }
+
+      if (hls) { hls.destroy(); hls = null; }
+
+      // 先检查直播流地址是否可达
+      try {
+        const res = await fetch(url, { method: 'HEAD', mode: 'cors' });
+        if (!res.ok) {
+          if(statusText) statusText.textContent = `直播流请求失败: HTTP ${res.status} ${res.statusText}`;
+          return;
+        }
+      } catch (e) {
+        // fetch 可能因 CORS 失败，尝试直接加载
+        console.warn('预检失败，尝试直接加载:', e.message);
+      }
+
+      function doPlay(src) {
+        video.src = src;
+        video.play().catch(e => console.warn("Autoplay blocked"));
+      }
+
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        doPlay(url);
+      } else if (Hls.isSupported()) {
+        hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+          video.play();
+        });
+        hls.on(Hls.Events.ERROR, function(_evt, data) {
+          if (data.fatal) {
+            if(statusText) statusText.textContent = `HLS 播放失败: ${data.type} (HTTP ${data.response?.code || '未知'})`;
+          }
+        });
+      } else {
+        if(statusText) statusText.textContent = '当前设备不支持 HLS 播放';
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        // 全屏整个容器，这样弹幕层也会被包含在内
+        if (appContainer.requestFullscreen) {
+          appContainer.requestFullscreen();
+        } else if (appContainer.webkitRequestFullscreen) {
+          appContainer.webkitRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // 视频原生播放错误监听
+    video.addEventListener('error', () => {
+      const err = video.error;
+      if (err && statusText) {
+        const codes = { 1: 'MEDIA_ERR_ABORTED', 2: 'MEDIA_ERR_NETWORK', 3: 'MEDIA_ERR_DECODE', 4: 'MEDIA_ERR_SRC_NOT_SUPPORTED' };
+        statusText.textContent = `视频播放错误: ${codes[err.code] || err.code} — ${err.message || '加载失败'}`;
+      }
+    });
+
+    liveLoadBtn.onclick = loadStream;
+    fullScreenBtn.onclick = toggleFullscreen;
+
+    // 默认加载 test.html 里的测试流 (可选)
+    streamInput.value = "https://v4-64229c47856f03908098e48b5f0f220e.livehwc4.com/hls.yjjcfw.com/live/10042500136.m3u8?sub_m3u8=true&edge_slice=true&hwTime=69F55849&hwSecret=6fc9355b31712ff6fe18fab8dcb4ebb6beff573647c58131e93f0b75d1d2acdf&user_session_id=f0adec623c216756359c2a71d11208db";
+  </script>
+
+  <script src="js/ipad.js"></script>
+</body>
+</html>
