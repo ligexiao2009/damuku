@@ -178,18 +178,28 @@
     if (e.key === 'Enter') loadDanmaku(bvidInput.value.trim());
   });
 
-  // 一键粘贴直播地址
+  // 一键粘贴直播地址：第一次清空，第二次粘贴
   var pasteBtn = document.getElementById('paste-stream-btn');
   if (pasteBtn) {
+    var pastePending = false;
     pasteBtn.addEventListener('click', async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text) {
-          var input = document.getElementById('streamUrl');
-          if (input) input.value = text.trim();
+      var input = document.getElementById('streamUrl');
+      if (!input) return;
+      if (!pastePending) {
+        input.value = '';
+        pasteBtn.textContent = '📋✓';
+        pasteBtn.title = '再次点击粘贴剪贴板内容';
+        pastePending = true;
+      } else {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) input.value = text.trim();
+        } catch {
+          setStatus('无法读取剪贴板，请手动粘贴');
         }
-      } catch {
-        setStatus('无法读取剪贴板，请手动粘贴');
+        pasteBtn.textContent = '📋';
+        pasteBtn.title = '清空直播地址';
+        pastePending = false;
       }
     });
   }
