@@ -3,7 +3,7 @@ const axios = require('axios');
 const rand = () => Math.random().toString();
 
 async function fetchCount(matchId, type) {
-  const url = `https://dan.zhibo8.cc/data/2026/${type}/match${matchId}v_count.htm?rand=${rand()}`;
+  const url = `https://dan.zhibo8.cc/data/2026/${type}/${matchId}_count.htm?rand=${rand()}`;
   console.log(`📡 [zhibo8] FETCH count: ${url}`);
   const res = await axios.get(url, {
     headers: { referer: 'https://www.zhibo8.com/', 'user-agent': 'Mozilla/5.0' },
@@ -13,7 +13,7 @@ async function fetchCount(matchId, type) {
 }
 
 async function fetchPage(matchId, type, page) {
-  const url = `https://dan.zhibo8.cc/data/2026/${type}/match${matchId}v_${page}.htm?rand=${rand()}`;
+  const url = `https://dan.zhibo8.cc/data/2026/${type}/${matchId}_${page}.htm?rand=${rand()}`;
   console.log(`📦 [zhibo8] FETCH page: ${url}`);
   const res = await axios.get(url, {
     headers: { referer: 'https://www.zhibo8.com/', 'user-agent': 'Mozilla/5.0' },

@@ -69,7 +69,7 @@
   function togglePanel() { if (isPanelVisible()) hidePanel(); else showPanel(); }
   function resetHideTimer() {
     clearHideTimer();
-    hideTimer = setTimeout(hidePanel, 8000);
+    hideTimer = setTimeout(hidePanel, 20000);
   }
   function clearHideTimer() {
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
@@ -275,7 +275,7 @@
   // 提示文字
   var hint = panel.querySelector('div[style*="font-size:10px"]');
   if (hint) {
-    hint.textContent = '右上角红点唤出面板 · 点击✕关闭 · 8秒自动隐藏';
+    hint.textContent = '右上角红点唤出面板 · 点击✕关闭 · 20秒自动隐藏';
     hint.style.color = '#888';
   }
 
