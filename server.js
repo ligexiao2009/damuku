@@ -402,9 +402,10 @@ app.get('/api/danmaku', async (req, res) => {
     if (source === 'zhibo8') {
       const matchId = (id || '').replace(/\D/g, '');
       const type = req.query.type || 'zuqiu';
-      console.log(`[zhibo8] 查询弹幕 matchId: ${matchId} type: ${type}`);
-      const danmus = await fetchZhibo8Danmaku(matchId, type);
-      return res.json(success({ source: 'zhibo8', id: matchId, count: danmus.length, danmus }));
+      const lastMaxId = Number(req.query.lastMaxId) || 0;
+      console.log(`[zhibo8] 查询弹幕 matchId: ${matchId} type: ${type} lastMaxId: ${lastMaxId}`);
+      const { danmus, maxId } = await fetchZhibo8Danmaku(matchId, type, lastMaxId);
+      return res.json(success({ source: 'zhibo8', id: matchId, count: danmus.length, danmus, maxId }));
     }
 
     return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango, zhibo8'));

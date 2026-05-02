@@ -69,6 +69,7 @@
   let isSeeking = false;   // pause time updates while user drags
   let lastFolder = '';
   let zhibo8Timer = null;
+  let zhibo8LastMaxId = 0;
 
   // --- Load saved config from server ---
   async function loadConfig() {
@@ -176,11 +177,12 @@
     if (source === 'zhibo8') {
       setStatus(`开始轮询${label}弹幕...`);
       currentBvid = id;
+      zhibo8LastMaxId = 0;
 
       const poll = async () => {
         try {
           const type = zhibo8TypeSelect.value;
-          const params = new URLSearchParams({ source, id, type });
+          const params = new URLSearchParams({ source, id, type, lastMaxId: String(zhibo8LastMaxId) });
           const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
           if (data.danmus.length) {
             const now = getSimulatedTime();
@@ -190,6 +192,7 @@
             }
             engine.append(data.danmus);
             if (!isRunning) startSimulation();
+            if (data.maxId) zhibo8LastMaxId = data.maxId;
             setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${id}`);
           }
         } catch (err) {

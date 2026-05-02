@@ -49,6 +49,7 @@
   let simTime = 0;
   let simStartPerf = 0;
   let zhibo8Timer = null;
+  let zhibo8LastMaxId = 0;
   let hideTimer = null;
 
   // --- Panel control ---
@@ -119,13 +120,14 @@
   async function loadDanmaku(id) {
     if (!id) { setStatus('请输入比赛ID'); return; }
     clearZhibo8Poll();
+    zhibo8LastMaxId = 0;
 
     const type = zhibo8TypeSelect.value;
     setStatus('开始轮询直播吧弹幕...');
 
     const poll = async () => {
       try {
-        const params = new URLSearchParams({ source: 'zhibo8', id, type });
+        const params = new URLSearchParams({ source: 'zhibo8', id, type, lastMaxId: String(zhibo8LastMaxId) });
         const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
         if (data.danmus.length) {
           const now = getSimulatedTime();
@@ -135,6 +137,7 @@
           }
           engine.append(data.danmus);
           if (!isRunning) startSimulation();
+          if (data.maxId) zhibo8LastMaxId = data.maxId;
           setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${id}`);
         }
       } catch (err) {
