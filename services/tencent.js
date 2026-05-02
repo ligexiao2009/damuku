@@ -1,4 +1,8 @@
 const axios = require('axios');
+const util = require('util');
+
+// 将 setTimeout Promise 化
+const sleep = util.promisify(setTimeout);
 
 async function fetchTencentDanmaku(vid, durationMs) {
   const step = 30000;
@@ -8,7 +12,7 @@ async function fetchTencentDanmaku(vid, durationMs) {
   for (let i = 0; i < totalSegments; i++) {
     const start = i * step;
     const end = start + step;
-
+    await sleep(10); // 避免请求过快被封禁
     try {
       const res = await axios.get(
         `https://dm.video.qq.com/barrage/segment/${vid}/t/v1/${start}/${end}`,
@@ -24,7 +28,7 @@ async function fetchTencentDanmaku(vid, durationMs) {
       );
 
       const list = res.data?.barrage_list || [];
-
+      console.log(`[tencent] 分段 ${start}-${end} 获取到 ${list.length} 条弹幕`);
       for (const d of list) {
         if (!d.content) continue;
         let color = '#ffffff';

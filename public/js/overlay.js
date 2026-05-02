@@ -23,6 +23,7 @@
   const folderRow = document.getElementById('folder-row');
   const videoFileRow = document.getElementById('video-file-row');
   const loadBtn = document.getElementById('load-btn');
+  const refreshBtn = document.getElementById('refresh-btn');
   const playPauseBtn = document.getElementById('play-pause-btn');
   const offsetSlider = document.getElementById('offset-slider');
   const offsetVal = document.getElementById('offset-val');
@@ -164,7 +165,7 @@
   }
 
   // --- Danmaku loading ---
-  async function loadDanmaku(id) {
+  async function loadDanmaku(id, { refresh = false } = {}) {
     if (!id) {
       setStatus('请输入 BV号、EP号 或 VID');
       return;
@@ -175,7 +176,12 @@
     clearZhibo8Poll();
 
     if (source === 'zhibo8') {
-      setStatus(`开始轮询${label}弹幕...`);
+      if (refresh) {
+        engine.load([]);
+        setStatus(`重新轮询${label}弹幕...`);
+      } else {
+        setStatus(`开始轮询${label}弹幕...`);
+      }
       currentBvid = id;
       zhibo8LastMaxId = 0;
 
@@ -205,15 +211,16 @@
       return;
     }
 
-    setStatus(`加载${label}弹幕中...`);
+    setStatus(`${refresh ? '重新' : ''}加载${label}弹幕中...`);
     try {
       const params = new URLSearchParams({ source, id });
       if (source === 'bili') params.set('strategy', 'seg.so');
       if (source === 'qq') params.set('duration', String(maxDuration * 1000));
+      if (refresh) params.set('refresh', '1');
       const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
       engine.load(data.danmus);
       currentBvid = id;
-      setStatus(`已加载 ${data.danmus.length} 条弹幕 · ${id}`);
+      setStatus(`已加载 ${data.danmus.length} 条弹幕${refresh ? '（已刷新）' : ''} · ${id}`);
     } catch (err) {
       setStatus(`加载失败: ${err.message}`);
     }
@@ -354,6 +361,7 @@
 
   // --- Event handlers ---
   loadBtn.addEventListener('click', () => loadDanmaku(bvidInput.value.trim()));
+  refreshBtn.addEventListener('click', () => loadDanmaku(bvidInput.value.trim(), { refresh: true }));
 
   bvidInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') loadDanmaku(bvidInput.value.trim());

@@ -31,6 +31,16 @@ let VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
 const danmuProgressMap = new Map();
 const convertTasks = new Map();
 
+// 备份弹幕缓存文件（精确到分钟的时间戳）
+function backupCache(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const now = new Date();
+  const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  const bak = `${filePath}.bak.${ts}`;
+  fs.copyFileSync(filePath, bak);
+  console.log(`📦 备份旧缓存: ${path.basename(bak)}`);
+}
+
 
 for (const dir of [CACHE_DIR, PLAYBACK_DIR, DANMU_DIR, THUMB_DIR, META_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -259,6 +269,7 @@ app.get('/api/danmu', async (req, res) => {
 
     const cacheFileFinal = getCacheFilePaths(cacheKey, strategy, DANMU_DIR)[0];
     const result = { strategy, id, cid: videoMeta.cid, count: danmus.length, danmus };
+    backupCache(cacheFileFinal);
     fs.writeFileSync(cacheFileFinal, JSON.stringify(result, null, 2));
     res.json(success(result));
   } catch (err) {
@@ -293,6 +304,7 @@ app.get('/api/danmaku', async (req, res) => {
       console.log(`[tencent] 完成，共 ${danmus.length} 条`);
 
       const result = { source: 'qq', id: vid, count: danmus.length, danmus };
+      backupCache(cacheFile);
       fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
       return res.json(success(result));
     }
@@ -371,6 +383,7 @@ app.get('/api/danmaku', async (req, res) => {
 
       const cacheFileFinal = getCacheFilePaths(cacheKey, requestedStrategy, DANMU_DIR)[0];
       const result = { source: 'bili', strategy: requestedStrategy, id, cid: videoMeta.cid, count: danmus.length, danmus };
+      backupCache(cacheFileFinal);
       fs.writeFileSync(cacheFileFinal, JSON.stringify(result, null, 2));
       return res.json(success(result));
     }
@@ -394,6 +407,7 @@ app.get('/api/danmaku', async (req, res) => {
       console.timeEnd('[mango] 耗时');
 
       const result = { source: 'mango', id: videoId, count: danmus.length, danmus };
+      backupCache(cacheFile);
       fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
       return res.json(success(result));
     }
