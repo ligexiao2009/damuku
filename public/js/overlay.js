@@ -717,6 +717,14 @@
   let dragInfo = null;
   const dragHandle = document.getElementById('panel-drag-handle');
 
+  // 隐藏面板按钮
+  const hideBtn = document.createElement('span');
+  hideBtn.textContent = '✕';
+  hideBtn.title = '隐藏面板';
+  hideBtn.style.cssText = 'font-size:16px;cursor:pointer;color:#a0a8c0;padding:0 4px;line-height:1;';
+  hideBtn.addEventListener('click', (e) => { e.stopPropagation(); hidePanel(); });
+  dragHandle.appendChild(hideBtn);
+
   dragHandle.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const rect = controlPanel.getBoundingClientRect();
