@@ -191,12 +191,9 @@
         pasteBtn.title = '再次点击粘贴剪贴板内容';
         pastePending = true;
       } else {
-        try {
-          const text = await navigator.clipboard.readText();
-          if (text) input.value = text.trim();
-        } catch {
-          setStatus('无法读取剪贴板，请手动粘贴');
-        }
+        input.focus();
+        input.select();
+        setStatus('请长按输入框粘贴');
         pasteBtn.textContent = '📋';
         pasteBtn.title = '清空直播地址';
         pastePending = false;
