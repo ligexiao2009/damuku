@@ -841,6 +841,7 @@
 
   // --- IINA 播放状态同步 ---
   let iinaPaused = false;
+  let iinaLastTime = 0;
   let iinaLastPath = '';
   setInterval(async () => {
     try {
@@ -855,6 +856,16 @@
           setStatus('IINA 已播放');
         }
       }
+      // IINA 快进/快退 → 弹幕跟随跳转
+      if (state.time > 0 && state.path === iinaLastPath) {
+        const gap = Math.abs(state.time - iinaLastTime);
+        if (gap > 30 && iinaLastTime > 0) {
+          seekTo(state.time);
+          updateTimeDisplay();
+          setStatus(`IINA 跳转到 ${formatTime(state.time)}`);
+        }
+      }
+      iinaLastTime = state.time;
       // IINA 文件切换 → 自动选文件夹 + 视频
       if (state.path && state.path !== iinaLastPath) {
         iinaLastPath = state.path;
