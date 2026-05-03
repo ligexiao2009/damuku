@@ -13,6 +13,7 @@ const { parseDanmu, tryParseDanmuSeg } = require('./services/danmu');
 const { fetchTencentDanmaku } = require('./services/tencent');
 const { fetchMangoDanmaku } = require('./services/mango');
 const { fetchZhibo8Danmaku } = require('./services/zhibo8');
+const { fetchTxspDanmaku } = require('./services/txsp');
 const { streamDirect, transcodeStream, generateLocalThumb } = require('./services/ffmpeg');
 
 const app = express();
@@ -283,7 +284,7 @@ app.get('/api/danmu', async (req, res) => {
 app.get('/api/danmaku', async (req, res) => {
   try {
     const { source, id, duration } = req.query;
-    if (!source || !id) return res.status(400).json(fail(400, '缺少 source 或 id 参数'));
+    if (!source) return res.status(400).json(fail(400, '缺少 source 参数'));
 
     // 腾讯弹幕
     if (source === 'qq') {
@@ -422,7 +423,20 @@ app.get('/api/danmaku', async (req, res) => {
       return res.json(success({ source: 'zhibo8', id: matchId, count: danmus.length, danmus, maxId }));
     }
 
-    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango, zhibo8'));
+    // 腾讯体育弹幕（实时轮询）
+    if (source === 'txsp') {
+      const roomId = req.query.roomId || '';
+      const programId = req.query.programId || '';
+      const lastSeq = Number(req.query.lastSeq) || 0;
+      const cursor = req.query.cursor || '';
+      if (!roomId || !programId) return res.status(400).json(fail(400, '缺少 roomId 或 programId'));
+      console.log(`[txsp] 查询弹幕 roomId: ${roomId} programId: ${programId} lastSeq: ${lastSeq}`);
+      const txspCookie = req.query.txspCookie || '';
+      const { danmus, maxSeq, cursor: nextCursor, pullInterval } = await fetchTxspDanmaku(roomId, programId, lastSeq, cursor, txspCookie);
+      return res.json(success({ source: 'txsp', id: `${roomId}_${programId}`, count: danmus.length, danmus, maxSeq, cursor: nextCursor, pullInterval }));
+    }
+
+    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango, zhibo8, txsp'));
   } catch (err) {
     console.error(`[${req.query.source}] 弹幕请求失败:`, err.message);
     const { id, source } = req.query;
@@ -659,15 +673,17 @@ app.post('/api/progress', (req, res) => {
   const { id, time } = req.body || {};
   if (!id) return res.status(400).json(fail(400, '缺少ID'));
 
-  const safeId = encodeURIComponent(String(id));
+  const safeId = String(id).replace(/\//g, '／');
   const file = path.join(PLAYBACK_DIR, `${safeId}.json`);
 
+  const saveTime = Number(time) || 0;
   fs.writeFileSync(file, JSON.stringify({
     id,
-    time: Number(time) || 0,
+    time: saveTime,
     updatedAt: Date.now()
   }, null, 2));
 
+  console.log(`💾 [progress] 保存: ${id} → ${saveTime}s`);
   res.json(success(null));
 });
 
@@ -675,18 +691,34 @@ app.get('/api/progress', (req, res) => {
   const { id } = req.query;
   if (!id) return res.status(400).json(fail(400, '缺少ID'));
 
-  const safeId = encodeURIComponent(String(id));
+  const safeId = String(id).replace(/\//g, '／');
   const file = path.join(PLAYBACK_DIR, `${safeId}.json`);
 
-  if (!fs.existsSync(file)) {
+  // 兼容旧的 URL 编码文件名
+  const legacyFile = path.join(PLAYBACK_DIR, `${encodeURIComponent(String(id))}.json`);
+  const actualFile = fs.existsSync(file) ? file : (fs.existsSync(legacyFile) ? legacyFile : null);
+
+  if (!actualFile) {
     return res.json(success({ time: 0 }));
   }
 
   try {
-    res.json(success(JSON.parse(fs.readFileSync(file, 'utf-8'))));
+    res.json(success(JSON.parse(fs.readFileSync(actualFile, 'utf-8'))));
   } catch {
     res.json(success({ time: 0 }));
   }
+});
+
+// IINA 播放状态同步（供 overlay 轮询）
+let iinaState = { paused: false, time: 0 };
+app.post('/api/iina-state', (req, res) => {
+  const { paused, time } = req.body || {};
+  if (typeof paused === 'boolean') iinaState.paused = paused;
+  if (typeof time === 'number') iinaState.time = time;
+  res.json(success(iinaState));
+});
+app.get('/api/iina-state', (_req, res) => {
+  res.json(success(iinaState));
 });
 
 app.post('/api/rename', async (req, res) => {

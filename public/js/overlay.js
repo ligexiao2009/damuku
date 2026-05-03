@@ -20,6 +20,9 @@
   const sourceSelect = document.getElementById('source-select');
   const zhibo8TypeSelect = document.getElementById('zhibo8-type-select');
   const zhibo8TypeRow = document.getElementById('zhibo8-type-row');
+  const txspConfigRow = document.getElementById('txsp-config-row');
+  const txspRoomId = document.getElementById('txsp-room-id');
+  const txspProgramId = document.getElementById('txsp-program-id');
   const folderRow = document.getElementById('folder-row');
   const videoFileRow = document.getElementById('video-file-row');
   const loadBtn = document.getElementById('load-btn');
@@ -71,6 +74,10 @@
   let lastFolder = '';
   let zhibo8Timer = null;
   let zhibo8LastMaxId = 0;
+  let txspTimer = null;
+  let txspLastSeq = 0;
+  let txspCursor = '';
+  let txspCookie = '';
 
   // --- Load saved config from server ---
   async function loadConfig() {
@@ -166,14 +173,14 @@
 
   // --- Danmaku loading ---
   async function loadDanmaku(id, { refresh = false } = {}) {
-    if (!id) {
+    const source = sourceSelect.value;
+    if (!id && source !== 'txsp') {
       setStatus('请输入 BV号、EP号 或 VID');
       return;
     }
-    const source = sourceSelect.value;
     const label = { bili: 'B站', qq: '腾讯', mango: '芒果', zhibo8: '直播吧' }[source] || source;
 
-    clearZhibo8Poll();
+    clearPollTimers();
 
     if (source === 'zhibo8') {
       if (refresh) {
@@ -211,6 +218,48 @@
       return;
     }
 
+    if (source === 'txsp') {
+      const roomId = txspRoomId.value.trim();
+      const programId = txspProgramId.value.trim();
+      if (!roomId || !programId) {
+        setStatus('请输入 Room ID 和 Program ID');
+        return;
+      }
+      setStatus(`开始轮询${label}弹幕...`);
+      engine.load([]);
+      currentBvid = `${roomId}_${programId}`;
+      txspLastSeq = 0;
+      txspCursor = '';
+
+      const poll = async () => {
+        try {
+          const params = new URLSearchParams({
+            source: 'txsp', roomId, programId,
+            lastSeq: String(txspLastSeq), cursor: txspCursor,
+            txspCookie
+          });
+          const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
+          if (data.danmus.length) {
+            const now = getSimulatedTime();
+            for (const d of data.danmus) d.time = now;
+            engine.append(data.danmus);
+            if (!isRunning) startSimulation();
+            if (data.maxSeq) txspLastSeq = data.maxSeq;
+            if (data.cursor) txspCursor = data.cursor;
+            setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${roomId}`);
+          }
+          const interval = data.pullInterval || 3000;
+          txspTimer = setTimeout(poll, interval);
+        } catch (err) {
+          setStatus(`轮询失败: ${err.message}`);
+          txspTimer = setTimeout(poll, 3000);
+        }
+      };
+
+      poll();
+      return;
+    }
+
     setStatus(`${refresh ? '重新' : ''}加载${label}弹幕中...`);
     try {
       const params = new URLSearchParams({ source, id });
@@ -226,11 +275,9 @@
     }
   }
 
-  function clearZhibo8Poll() {
-    if (zhibo8Timer) {
-      clearInterval(zhibo8Timer);
-      zhibo8Timer = null;
-    }
+  function clearPollTimers() {
+    if (zhibo8Timer) { clearInterval(zhibo8Timer); zhibo8Timer = null; }
+    if (txspTimer) { clearTimeout(txspTimer); txspTimer = null; }
   }
 
   // --- Simulation timer (standalone mode, no video) ---
@@ -363,21 +410,42 @@
   loadBtn.addEventListener('click', () => loadDanmaku(bvidInput.value.trim()));
   refreshBtn.addEventListener('click', () => loadDanmaku(bvidInput.value.trim(), { refresh: true }));
 
+  // txsp 粘贴智能提取 room_id / program_id
+  bvidInput.addEventListener('paste', () => {
+    if (sourceSelect.value !== 'txsp') return;
+    setTimeout(() => {
+      const raw = bvidInput.value;
+      const roomMatch = raw.match(/"room_id"\s*:\s*(\d+)/);
+      const progMatch = raw.match(/"program_id"\s*:\s*"(\d+)"/);
+      const cookieMatch = raw.match(/"cookie"\s*:\s*"([^"]+)"/) || raw.match(/-b\s+'([^']+)'/);
+      if (roomMatch) txspRoomId.value = roomMatch[1];
+      if (progMatch) txspProgramId.value = progMatch[1];
+      if (cookieMatch) txspCookie = cookieMatch[1];
+      if (roomMatch || progMatch) {
+        bvidInput.value = '';
+        setStatus('已自动提取 Room ID 和 Program ID');
+      }
+    }, 100);
+  });
+
   bvidInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') loadDanmaku(bvidInput.value.trim());
   });
 
   sourceSelect.addEventListener('change', () => {
     const src = sourceSelect.value;
-    clearZhibo8Poll();
+    clearPollTimers();
     const isZhibo8 = src === 'zhibo8';
+    const isTxsp = src === 'txsp';
     zhibo8TypeRow.style.display = isZhibo8 ? '' : 'none';
-    folderRow.style.display = isZhibo8 ? 'none' : '';
-    videoFileRow.style.display = isZhibo8 ? 'none' : '';
+    txspConfigRow.style.display = isTxsp ? '' : 'none';
+    folderRow.style.display = (isZhibo8 || isTxsp) ? 'none' : '';
+    videoFileRow.style.display = (isZhibo8 || isTxsp) ? 'none' : '';
     if (src === 'bili') bvidInput.placeholder = '输入 BV 号或 EP 号';
     else if (src === 'qq') bvidInput.placeholder = '输入 VID';
     else if (src === 'mango') bvidInput.placeholder = '输入 HHMMSS/videoId';
-    else bvidInput.placeholder = '输入比赛ID';
+    else if (isZhibo8) bvidInput.placeholder = '输入比赛ID';
+    else bvidInput.placeholder = '输入比赛ID（不用填）';
     const name = videoFileSelect.value || bvidInput.value;
     if (name) {
       bvidInput.value = getVideoIdForSource(name, src);
@@ -444,13 +512,25 @@
     applyAndSave({ area: Number(areaSlider.value) });
   });
 
-  resetBtn.addEventListener('click', () => {
+  resetBtn.addEventListener('click', async () => {
+    if (currentVideoFileName) {
+      try {
+        const data = await api(`${SERVER}/api/progress?id=${encodeURIComponent(currentVideoFileName)}`);
+        if (data && data.time > 0) {
+          engine.reset();
+          seekTo(data.time);
+          updateTimeDisplay();
+          setStatus(`已恢复到服务器进度: ${formatTime(data.time)}`);
+          return;
+        }
+      } catch {}
+    }
     engine.reset();
     simTime = 0;
     simStartPerf = performance.now();
     if (isRunning) engine.start(simTime);
     updateTimeDisplay();
-    setStatus('已重置');
+    setStatus('已重置（无服务器记录）');
   });
 
   exitBtn.addEventListener('click', () => {
@@ -756,6 +836,24 @@
     controlPanel.style.bottom = '40px';
     controlPanel.style.transform = 'translateX(-50%)';
   });
+
+  // --- IINA 播放状态同步 ---
+  let iinaPaused = false;
+  setInterval(async () => {
+    try {
+      const state = await api(`${SERVER}/api/iina-state`);
+      if (state.paused !== iinaPaused) {
+        iinaPaused = state.paused;
+        if (iinaPaused && isRunning) {
+          pauseSimulation();
+          setStatus('IINA 已暂停');
+        } else if (!iinaPaused && !isRunning) {
+          startSimulation();
+          setStatus('IINA 已播放');
+        }
+      }
+    } catch {}
+  }, 2000);
 
   // --- Init ---
   (async () => {

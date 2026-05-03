@@ -18,6 +18,9 @@
   const danmakuLayer = document.getElementById('danmaku-layer');
   const sourceSelect = document.getElementById('source-select');
   const zhibo8TypeSelect = document.getElementById('zhibo8-type-select');
+  const txspConfigRow = document.getElementById('txsp-config-row');
+  const txspRoomId = document.getElementById('txsp-room-id');
+  const txspProgramId = document.getElementById('txsp-program-id');
   const bvidInput = document.getElementById('bvid-input');
   const loadBtn = document.getElementById('load-btn');
   const playPauseBtn = document.getElementById('play-pause-btn');
@@ -50,6 +53,10 @@
   let simStartPerf = 0;
   let zhibo8Timer = null;
   let zhibo8LastMaxId = 0;
+  let txspTimer = null;
+  let txspLastSeq = 0;
+  let txspCursor = '';
+  let txspCookie = '';
   let hideTimer = null;
 
   // --- Panel control ---
@@ -113,40 +120,88 @@
   }
 
   // --- Danmaku loading ---
-  function clearZhibo8Poll() {
+  function clearPollTimers() {
     if (zhibo8Timer) { clearInterval(zhibo8Timer); zhibo8Timer = null; }
+    if (txspTimer) { clearTimeout(txspTimer); txspTimer = null; }
   }
 
   async function loadDanmaku(id) {
-    if (!id) { setStatus('请输入比赛ID'); return; }
-    clearZhibo8Poll();
-    zhibo8LastMaxId = 0;
+    const source = sourceSelect.value;
+    const label = { zhibo8: '直播吧', txsp: '腾讯体育' }[source] || source;
+    clearPollTimers();
 
-    const type = zhibo8TypeSelect.value;
-    setStatus('开始轮询直播吧弹幕...');
+    if (source === 'zhibo8') {
+      if (!id) { setStatus('请输入比赛ID'); return; }
+      zhibo8LastMaxId = 0;
 
-    const poll = async () => {
-      try {
-        const params = new URLSearchParams({ source: 'zhibo8', id, type, lastMaxId: String(zhibo8LastMaxId) });
-        const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
-        if (data.danmus.length) {
-          const now = getSimulatedTime();
-          for (const d of data.danmus) {
-            d.time = now;
-            if (d.rawTime) d.ctime = new Date(d.rawTime).getTime() / 1000;
+      const type = zhibo8TypeSelect.value;
+      setStatus(`开始轮询${label}弹幕...`);
+
+      const poll = async () => {
+        try {
+          const params = new URLSearchParams({ source: 'zhibo8', id, type, lastMaxId: String(zhibo8LastMaxId) });
+          const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
+          if (data.danmus.length) {
+            const now = getSimulatedTime();
+            for (const d of data.danmus) {
+              d.time = now;
+              if (d.rawTime) d.ctime = new Date(d.rawTime).getTime() / 1000;
+            }
+            engine.append(data.danmus);
+            if (!isRunning) startSimulation();
+            if (data.maxId) zhibo8LastMaxId = data.maxId;
+            setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${id}`);
           }
-          engine.append(data.danmus);
-          if (!isRunning) startSimulation();
-          if (data.maxId) zhibo8LastMaxId = data.maxId;
-          setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${id}`);
+        } catch (err) {
+          setStatus(`轮询失败: ${err.message}`);
         }
-      } catch (err) {
-        setStatus(`轮询失败: ${err.message}`);
-      }
-    };
+      };
 
-    poll();
-    zhibo8Timer = setInterval(poll, 2000);
+      poll();
+      zhibo8Timer = setInterval(poll, 2000);
+      return;
+    }
+
+    if (source === 'txsp') {
+      const roomId = txspRoomId.value.trim();
+      const programId = txspProgramId.value.trim();
+      if (!roomId || !programId) {
+        setStatus('请输入 Room ID 和 Program ID');
+        return;
+      }
+      setStatus(`开始轮询${label}弹幕...`);
+      engine.load([]);
+      txspLastSeq = 0;
+      txspCursor = '';
+
+      const poll = async () => {
+        try {
+          const params = new URLSearchParams({
+            source: 'txsp', roomId, programId,
+            lastSeq: String(txspLastSeq), cursor: txspCursor,
+            txspCookie
+          });
+          const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
+          if (data.danmus.length) {
+            const now = getSimulatedTime();
+            for (const d of data.danmus) d.time = now;
+            engine.append(data.danmus);
+            if (!isRunning) startSimulation();
+            if (data.maxSeq) txspLastSeq = data.maxSeq;
+            if (data.cursor) txspCursor = data.cursor;
+            setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${roomId}`);
+          }
+          const interval = data.pullInterval || 3000;
+          txspTimer = setTimeout(poll, interval);
+        } catch (err) {
+          setStatus(`轮询失败: ${err.message}`);
+          txspTimer = setTimeout(poll, 3000);
+        }
+      };
+
+      poll();
+      return;
+    }
   }
 
   function setStatus(msg) {
@@ -178,6 +233,24 @@
     if (e.key === 'Enter') loadDanmaku(bvidInput.value.trim());
   });
 
+  // txsp 粘贴智能提取 room_id / program_id
+  bvidInput.addEventListener('paste', () => {
+    if (sourceSelect.value !== 'txsp') return;
+    setTimeout(() => {
+      const raw = bvidInput.value;
+      const roomMatch = raw.match(/"room_id"\s*:\s*(\d+)/);
+      const progMatch = raw.match(/"program_id"\s*:\s*"(\d+)"/);
+      const cookieMatch = raw.match(/"cookie"\s*:\s*"([^"]+)"/) || raw.match(/-b\s+'([^']+)'/);
+      if (roomMatch) txspRoomId.value = roomMatch[1];
+      if (progMatch) txspProgramId.value = progMatch[1];
+      if (cookieMatch) txspCookie = cookieMatch[1];
+      if (roomMatch || progMatch) {
+        bvidInput.value = '';
+        setStatus('已自动提取 Room ID 和 Program ID');
+      }
+    }, 100);
+  });
+
   // 一键粘贴直播地址：第一次清空，第二次粘贴
   var pasteBtn = document.getElementById('paste-stream-btn');
   if (pasteBtn) {
@@ -203,11 +276,15 @@
 
   sourceSelect.addEventListener('change', () => {
     const z = sourceSelect.value === 'zhibo8';
+    const t = sourceSelect.value === 'txsp';
     document.getElementById('zhibo8-type-row').style.display = z ? '' : 'none';
-    document.getElementById('folder-row').style.display = z ? 'none' : '';
-    document.getElementById('video-file-row').style.display = z ? 'none' : '';
-    bvidInput.placeholder = z ? '输入比赛ID' : '输入 BV 号或 EP 号...';
-    if (!z) clearZhibo8Poll();
+    txspConfigRow.style.display = t ? '' : 'none';
+    document.getElementById('folder-row').style.display = (z || t) ? 'none' : '';
+    document.getElementById('video-file-row').style.display = (z || t) ? 'none' : '';
+    if (z) bvidInput.placeholder = '输入比赛ID';
+    else if (t) bvidInput.placeholder = '输入比赛ID（不用填）';
+    else bvidInput.placeholder = '输入 BV 号或 EP 号...';
+    if (!z && !t) clearPollTimers();
   });
 
   playPauseBtn.addEventListener('click', () => {
@@ -241,7 +318,7 @@
   });
 
   exitBtn.addEventListener('click', () => {
-    clearZhibo8Poll();
+    clearPollTimers();
     pauseSimulation();
     engine.destroy();
     hidePanel();

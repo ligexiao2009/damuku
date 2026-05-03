@@ -17,5 +17,6 @@ fi
 echo "=== 启动后端服务 ==="
 node server.js &
 SERVER_PID=$!
+python3 scripts/iina-watcher.py &
 
 
