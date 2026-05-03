@@ -533,7 +533,8 @@
         var url = '/api/manage/videos' + (folder ? '?folder=' + encodeURIComponent(folder) : '');
         var files = await api(url);
         if (req !== loadVideosReq) return;
-        videoCount.textContent = files.length + ' 个项目';
+        var totalSize = files.reduce(function(s, f) { return s + f.size; }, 0);
+        videoCount.textContent = files.length + ' 个项目 · 总计 ' + formatSize(totalSize);
         if (!files.length) {
           videoTableBody.innerHTML = `
             <div class="empty-state">
@@ -565,7 +566,7 @@
         }
       } catch (err) {
         videoTableBody.innerHTML = '<div class="empty-state" style="color:var(--danger)">加载失败: ' + esc(err.message) + '</div>';
-        videoCount.textContent = '0 个项目';
+        videoCount.textContent = '0 个项目 · 总计 0 B';
       }
     }
 
