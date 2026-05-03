@@ -783,14 +783,14 @@
     // 自动检测弹幕源
     const biliId = detectVideoId(selected);
     const tencentId = detectVid(selected);
-    if (tencentId && !biliId) {
+    if (tencentId) {
       sourceSelect.value = 'qq';
       bvidInput.value = tencentId;
     } else if (biliId) {
       sourceSelect.value = 'bili';
       bvidInput.value = biliId;
     } else {
-      bvidInput.value = tencentId || biliId || '';
+      bvidInput.value = '';
     }
     sourceSelect.dispatchEvent(new Event('change'));
     const folder = folderSelect.value;
@@ -799,6 +799,8 @@
     }
     // 恢复新视频的播放时间
     await restorePlayTime(selected);
+    // 自动加载弹幕
+    loadDanmaku(bvidInput.value.trim());
   });
 
   // --- Panel dragging ---
@@ -839,6 +841,7 @@
 
   // --- IINA 播放状态同步 ---
   let iinaPaused = false;
+  let iinaLastPath = '';
   setInterval(async () => {
     try {
       const state = await api(`${SERVER}/api/iina-state`);
@@ -850,6 +853,39 @@
         } else if (!iinaPaused && !isRunning) {
           startSimulation();
           setStatus('IINA 已播放');
+        }
+      }
+      // IINA 文件切换 → 自动选文件夹 + 视频
+      if (state.path && state.path !== iinaLastPath) {
+        iinaLastPath = state.path;
+        const fileName = state.path.split('/').pop();
+        const dirPath = state.path.replace(/\/[^/]+$/, '');
+        const folderOpt = [...folderSelect.options].find(o => o.value === dirPath);
+        if (!folderOpt) return;
+        if (folderOpt.value === folderSelect.value) {
+          // 同文件夹，直接选视频
+          const videoOpt = [...videoFileSelect.options].find(o => o.value === fileName);
+          if (videoOpt && videoOpt.value !== videoFileSelect.value) {
+            videoFileSelect.value = videoOpt.value;
+            videoFileSelect.dispatchEvent(new Event('change'));
+          }
+        } else {
+          // 切换文件夹
+          folderSelect.value = folderOpt.value;
+          folderSelect.dispatchEvent(new Event('change'));
+          // 轮询等文件列表加载完再选视频
+          let retry = 0;
+          const trySelect = setInterval(() => {
+            retry++;
+            const vOpt = [...videoFileSelect.options].find(o => o.value === fileName);
+            if (vOpt) {
+              clearInterval(trySelect);
+              videoFileSelect.value = vOpt.value;
+              videoFileSelect.dispatchEvent(new Event('change'));
+            } else if (retry > 10) {
+              clearInterval(trySelect);
+            }
+          }, 300);
         }
       }
     } catch {}

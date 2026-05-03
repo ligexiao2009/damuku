@@ -710,11 +710,12 @@ app.get('/api/progress', (req, res) => {
 });
 
 // IINA 播放状态同步（供 overlay 轮询）
-let iinaState = { paused: false, time: 0 };
+let iinaState = { paused: false, time: 0, path: '' };
 app.post('/api/iina-state', (req, res) => {
-  const { paused, time } = req.body || {};
+  const { paused, time, path: filePath } = req.body || {};
   if (typeof paused === 'boolean') iinaState.paused = paused;
   if (typeof time === 'number') iinaState.time = time;
+  if (typeof filePath === 'string') iinaState.path = filePath;
   res.json(success(iinaState));
 });
 app.get('/api/iina-state', (_req, res) => {
