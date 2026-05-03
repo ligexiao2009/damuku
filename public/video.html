@@ -7,686 +7,325 @@
   <title>B站弹幕播放器</title>
   <style>
     :root {
-      --bg: #0c1017;
-      --panel: rgba(12, 18, 28, 0.82);
-      --panel-border: rgba(255, 255, 255, 0.08);
-      --panel-soft: rgba(255, 255, 255, 0.06);
-      --text: #f6f7fb;
-      --muted: #a8b0c2;
-      --accent: #ff6b8a;
-      --accent-strong: #ff4d73;
-      --accent-soft: rgba(255, 107, 138, 0.16);
-      --shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
-      --radius: 20px;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-light: #e0e7ff;
+      --danger: #ef4444;
+      --danger-bg: #fee2e2;
+      --danger-hover: #fca5a5;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+      --font-family: 'Inter', system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at top left, rgba(255, 107, 138, 0.18), transparent 28%),
-        radial-gradient(circle at top right, rgba(67, 181, 255, 0.16), transparent 24%),
-        linear-gradient(180deg, #0c1017 0%, #141d29 100%);
-      color: var(--text);
-      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-      padding: 20px 16px 24px;
-    }
-
-    .page {
-      width: min(1320px, 100%);
+      font-family: var(--font-family);
+      background: var(--bg);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 32px 20px;
+      max-width: 1360px;
       margin: 0 auto;
     }
 
-    .workspace {
-      display: grid;
-      gap: 12px;
-    }
+    .page { width: 100%; }
+    .workspace { display: grid; gap: 16px; }
 
-    .status-bar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      padding: 8px 10px;
-      border-radius: 12px;
-      background: var(--panel);
-      border: 1px solid var(--panel-border);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
-    }
-
-    .status-bar.hidden {
-      display: none;
-    }
-
-    .status-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: var(--panel-soft);
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1;
-      min-height: 26px;
-    }
-
-    .status-item strong {
-      color: var(--text);
-      font-weight: 700;
-    }
-
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      padding: 8px;
-      border-radius: 14px;
-      background: var(--panel);
-      border: 1px solid var(--panel-border);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
-      align-items: stretch;
-    }
-
-    .controls>* {
-      flex: 1 1 auto;
-    }
-
-    #videoFile {
-      flex: 1 1 160px;
-    }
-
-    #bvidInput {
-      flex: 1 1 140px;
-    }
-
-    #strategySelect {
-      flex: 0 0 88px;
-    }
-
-    .settings-row {
-      flex: 1 1 100%;
-    }
-
-    input,
-    button,
-    select {
-      border: none;
-      border-radius: 10px;
-      min-height: 34px;
-    }
-
-    input[type="text"],
-    input[type="file"],
-    select {
-      width: 100%;
-      min-width: 0;
-      padding: 0 10px;
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      outline: none;
-      font-size: 12px;
-    }
-
-    input[type="text"]:focus,
-    input[type="file"]:focus,
-    select:focus {
-      border-color: rgba(255, 107, 138, 0.5);
-      box-shadow: 0 0 0 3px rgba(255, 107, 138, 0.14);
-    }
-
-    select {
-      cursor: pointer;
-      appearance: none;
-    }
-
-    input[type="file"] {
-      padding: 4px 6px;
-    }
-
-    input[type="file"]::file-selector-button {
-      margin-right: 6px;
-      border: none;
-      border-radius: 8px;
-      padding: 5px 8px;
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--text);
-      cursor: pointer;
-      font-size: 12px;
-    }
-
-    button {
-      padding: 0 12px;
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-      color: white;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 700;
-      box-shadow: 0 10px 24px rgba(255, 77, 115, 0.25);
-      transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
-      white-space: nowrap;
-    }
-
-    button:hover {
-      transform: translateY(-1px);
-      filter: brightness(1.04);
-      box-shadow: 0 14px 28px rgba(255, 77, 115, 0.32);
-    }
-
-    button:active {
-      transform: translateY(0);
-    }
-
-    #fullScreenBtn {
-      background: linear-gradient(135deg, #293549 0%, #1b2433 100%);
-      box-shadow: none;
-    }
-
-    #prevVideoBtn,
-    #nextVideoBtn,
-    #pickFolderBtn,
-    #renamePageBtn {
-      background: linear-gradient(135deg, #293549 0%, #1b2433 100%);
-      box-shadow: none;
-    }
-
-    button:disabled {
-      cursor: not-allowed;
-      opacity: 0.45;
-      transform: none;
-      box-shadow: none;
-      filter: none;
-    }
-
-    .viewer-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 300px;
-      gap: 12px;
-      align-items: stretch;
-    }
-
-    .playlist-panel {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      background: var(--panel);
-      border: 1px solid var(--panel-border);
-      border-radius: 20px;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
-      padding: 12px;
-      min-height: 180px;
-      overflow: hidden;
-    }
-
-    .toggle-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      cursor: pointer;
-      font-size: 11px;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .toggle-label input[type="checkbox"] {
-      accent-color: var(--accent);
-      width: 14px;
-      height: 14px;
-      margin: 0;
-      cursor: pointer;
-    }
-
-    .playlist-header {
+    /* Header */
+    .app-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 10px;
-      flex-shrink: 0;
+      margin-bottom: 8px;
     }
-
-    .playlist-title {
-      font-size: 14px;
+    .app-header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 22px;
       font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text-main);
+    }
+    .app-header-title svg { color: var(--primary); }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 14px; border: none; border-radius: var(--radius-sm); font-size: 13px;
+      font-weight: 500; font-family: inherit; cursor: pointer; transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--primary); color: #fff;
+      box-shadow: 0 4px 14px 0 rgba(99,102,241,0.35);
+    }
+    .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    .btn-secondary {
+      background: var(--surface); color: var(--text-main);
+      border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+    }
+    .btn-secondary:hover { background: var(--bg); border-color: #cbd5e1; }
+    .btn-ghost {
+      background: transparent; color: var(--text-muted); min-width: auto; padding: 6px 10px;
+    }
+    .btn-ghost:hover { background: var(--bg); color: var(--text-main); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* Cards */
+    .card {
+      background: var(--surface); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md); border: 1px solid rgba(255,255,255,0.5);
+      padding: 20px;
     }
 
-    .playlist-meta {
-      font-size: 11px;
-      color: var(--muted);
+    /* Status bar */
+    .status-bar {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 10px 14px; border-radius: var(--radius-md);
+      background: var(--surface); border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
     }
+    .status-bar.hidden { display: none; }
+    .status-item {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 999px;
+      background: var(--bg); color: var(--text-muted);
+      font-size: 12px; line-height: 1; min-height: 28px;
+    }
+    .status-item strong { color: var(--text-main); font-weight: 600; }
+
+    /* Controls bar */
+    .controls {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
+    }
+    .controls > * { flex: 1 1 auto; }
+    #videoFile { flex: 1 1 160px; }
+    #bvidInput { flex: 1 1 140px; }
+
+    /* Form elements */
+    input, select {
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      min-height: 38px; font-size: 13px; font-family: inherit;
+      background: var(--bg); color: var(--text-main);
+      padding: 0 12px; outline: none; transition: all 0.2s;
+    }
+    input:focus, select:focus {
+      border-color: var(--primary); background: var(--surface);
+      box-shadow: 0 0 0 4px var(--primary-light);
+    }
+    select { cursor: pointer; appearance: none; -webkit-appearance: none; padding-right: 32px; }
+    input[type="file"] { padding: 6px 10px; font-size: 12px; }
+    input[type="file"]::file-selector-button {
+      margin-right: 8px; border: none; border-radius: 6px; padding: 5px 12px;
+      background: var(--primary); color: #fff; cursor: pointer; font-size: 12px; font-family: inherit;
+    }
+
+    /* Settings row */
+    .settings-row {
+      flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    }
+    .settings-row.hidden { display: none; }
+    .setting-group {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+      min-height: 34px; padding: 4px 10px; border-radius: var(--radius-sm);
+      background: var(--bg); border: 1px solid var(--border);
+      flex: 1 1 auto; min-width: 160px;
+    }
+    .setting-group label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .setting-group input[type="range"] { flex: 1 1 0; min-width: 0; padding: 0; accent-color: var(--primary); border: none; background: transparent; box-shadow: none; }
+    .setting-value { font-size: 11px; color: var(--text-main); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 36px; }
+
+    /* Viewer grid */
+    .viewer-grid {
+      display: grid; grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px; align-items: stretch;
+    }
+
+    /* Player */
+    .player-container {
+      position: relative; width: 100%; max-width: 100%; overflow: hidden;
+      background: #000; border-radius: var(--radius-lg);
+      border: 1px solid var(--border); box-shadow: var(--shadow-md);
+      margin: 0 auto;
+    }
+    .player-container:fullscreen { width: 100vw; height: 100vh; max-width: none; border-radius: 0; border: none; }
+    video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+
+    #danmaku-layer {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; overflow: hidden; z-index: 999; contain: layout style paint;
+    }
+    .danmu {
+      position: absolute; left: 0; top: 0; transform: translate3d(-9999px,-9999px,0);
+      white-space: nowrap; font-weight: bold; text-shadow: 1px 1px 2px black, 0 0 2px black;
+      backface-visibility: hidden; will-change: transform; contain: layout style paint;
+    }
+
+    /* Playlist panel */
+    .playlist-panel {
+      width: 100%; display: flex; flex-direction: column;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+      padding: 16px; min-height: 180px; overflow: hidden;
+    }
+    .playlist-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; flex-shrink: 0; }
+    .playlist-title { font-size: 15px; font-weight: 600; color: var(--text-main); }
+    .playlist-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .toggle-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .toggle-label input[type="checkbox"] { accent-color: var(--primary); width: 15px; height: 15px; margin: 0; cursor: pointer; }
 
     .playlist-list {
-      display: grid;
-      gap: 6px;
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      padding-right: 4px;
-      align-content: start;
+      display: grid; gap: 8px; flex: 1; min-height: 0; overflow-y: auto;
+      padding-right: 4px; align-content: start;
     }
-
-    /* ====== 新增：美化播放列表的滚动条 ====== */
-    .playlist-list::-webkit-scrollbar {
-      width: 4px;
-    }
-    .playlist-list::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 4px;
-    }
-    .playlist-list::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    .playlist-list:hover::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.3);
-    }
+    .playlist-list::-webkit-scrollbar { width: 4px; }
+    .playlist-list::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
+    .playlist-list::-webkit-scrollbar-track { background: transparent; }
+    .playlist-list:hover::-webkit-scrollbar-thumb { background: #a1a1aa; }
 
     .playlist-item {
-      position: relative;
-      width: 100%;
-      text-align: left;
-      padding: 10px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid transparent;
-      color: var(--text);
-      cursor: pointer;
-      box-shadow: none;
-      display: grid;
-      grid-template-columns: 110px minmax(0, 1fr);
-      align-items: stretch;
-      gap: 10px;
-      -webkit-appearance: none;
-      appearance: none;
-      /* 修复：添加过渡效果并修正换行，以防继承问题 */
-      transition: all 0.2s ease;
-      white-space: normal;
+      position: relative; width: 100%; text-align: left;
+      padding: 10px; border-radius: var(--radius-sm);
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text-main); cursor: pointer;
+      display: grid; grid-template-columns: 110px minmax(0, 1fr);
+      align-items: stretch; gap: 10px;
+      -webkit-appearance: none; appearance: none;
+      transition: all 0.2s ease; white-space: normal;
     }
+    @media (hover: hover) { .playlist-item:hover { border-color: var(--primary); background: var(--surface); } }
+    .playlist-item.active { border-color: var(--primary); background: var(--primary-light); box-shadow: 0 0 0 1px var(--primary); }
 
     .playlist-thumb-wrap {
-      position: relative;
-      width: 100%;
-      min-width: 0;
-      height: 0;
-      padding-bottom: 56.25%;
-      border-radius: 12px;
-      overflow: hidden;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      /* 修复：防止 Safari 在圆角 + absolute 时的渲染溢出和重绘问题 */
-      transform: translateZ(0);
-      -webkit-mask-image: -webkit-radial-gradient(white, black);
+      position: relative; width: 100%; min-width: 0; height: 0;
+      padding-bottom: 56.25%; border-radius: 10px; overflow: hidden;
+      background: var(--bg); border: 1px solid var(--border);
+      transform: translateZ(0); -webkit-mask-image: -webkit-radial-gradient(white, black);
     }
-
-    .playlist-thumb {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      border-radius: 12px;
-    }
-
-    @media (hover: hover) {
-      .playlist-item:hover {
-        transform: none;
-        box-shadow: none;
-        filter: none;
-        border-color: rgba(255, 255, 255, 0.12);
-        background: rgba(255, 255, 255, 0.08);
-      }
-    }
-
-    .playlist-item.active {
-      border-color: rgba(255, 107, 138, 0.42);
-      background: rgba(255, 107, 138, 0.14);
-    }
-
-    .playlist-item-name {
-      font-size: 12px;
-      font-weight: 700;
-      word-break: break-word;
-      line-height: 1.45;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-
-    .playlist-item-meta {
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.4;
-    }
-
-    .playlist-item-body {
-      display: grid;
-      align-content: center;
-      gap: 6px;
-      min-width: 0;
-    }
-
-    .playlist-thumb-badge {
-      position: absolute;
-      left: 8px;
-      top: 8px;
-      padding: 2px 6px;
-      border-radius: 999px;
-      background: rgba(0, 0, 0, 0.62);
-      color: #fff;
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 1.3;
-      backdrop-filter: blur(8px);
-    }
-
+    .playlist-thumb { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 10px; }
+    .playlist-item-name { font-size: 13px; font-weight: 600; word-break: break-word; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .playlist-item-meta { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+    .playlist-item-body { display: grid; align-content: center; gap: 6px; min-width: 0; }
     .playlist-item-delete {
-      position: absolute;
-      right: 6px;
-      top: 6px;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: rgba(0, 0, 0, 0.55);
-      color: #fff;
-      border: none;
-      cursor: pointer;
-      font-size: 12px;
-      line-height: 22px;
-      text-align: center;
-      opacity: 0;
-      transition: opacity 0.15s;
-      z-index: 2;
-      backdrop-filter: blur(6px);
+      position: absolute; right: 8px; top: 8px; width: 24px; height: 24px;
+      border-radius: 50%; background: var(--danger-bg); color: var(--danger);
+      border: none; cursor: pointer; font-size: 14px; line-height: 24px; text-align: center;
+      opacity: 0; transition: opacity 0.15s; z-index: 2;
     }
-
-    @media (hover: hover) {
-      .playlist-item:hover .playlist-item-delete {
-        opacity: 1;
-      }
-    }
-
-    .playlist-item:focus-within .playlist-item-delete {
-      opacity: 1;
-    }
-
-    .playlist-item-delete:hover {
-      background: rgba(220, 38, 38, 0.8);
-    }
-
-    .playlist-item.active .playlist-thumb-wrap {
-      border-color: rgba(255, 107, 138, 0.45);
-      box-shadow: 0 0 0 2px rgba(255, 107, 138, 0.08) inset;
-    }
-
-    .playlist-thumb-placeholder {
-      width: 100%;
-      height: 100%;
-      display: grid;
-      place-items: center;
-      color: rgba(255, 255, 255, 0.55);
-      font-size: 12px;
-      letter-spacing: 0.06em;
-      background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
-    }
+    @media (hover: hover) { .playlist-item:hover .playlist-item-delete { opacity: 1; } }
+    .playlist-item:focus-within .playlist-item-delete { opacity: 1; }
+    .playlist-item-delete:hover { background: var(--danger-hover); }
+    .playlist-item.active .playlist-thumb-wrap { border-color: var(--primary); }
 
     .playlist-empty {
-      padding: 18px 12px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.04);
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.6;
-      text-align: center;
+      padding: 24px 16px; border-radius: var(--radius-sm);
+      background: var(--bg); color: var(--text-muted);
+      font-size: 13px; line-height: 1.6; text-align: center;
+    }
+    .playlist-thumb-placeholder {
+      width: 100%; height: 100%; display: grid; place-items: center;
+      color: var(--text-muted); font-size: 12px;
+      background: var(--bg);
     }
 
     .control-hint {
-      margin-top: -2px;
-      padding: 0 6px;
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.5;
+      padding: 0 4px; color: var(--text-muted); font-size: 12px; line-height: 1.5;
     }
 
-    .settings-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      align-items: center;
-    }
-
-    .settings-row .setting-group {
-      flex: 1 1 auto;
-      min-width: 160px;
-    }
-
-    .settings-row > button {
-      flex: 0 0 auto;
-    }
-
-    .settings-row.hidden {
-      display: none;
-    }
-
-    .setting-group {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 2px 4px;
-      min-height: 30px;
-      background: var(--panel-soft);
-      padding: 4px 6px;
-      border-radius: 9px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .setting-group label {
-      font-size: 9px;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .setting-group input[type="range"] {
-      flex: 1 1 0;
-      min-width: 0;
-      padding: 0;
-      accent-color: var(--accent);
-    }
-
-    .setting-value {
-      font-size: 9px;
-      color: var(--text);
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-
-    .player-container {
-      position: relative;
-      width: 100%;
-      max-width: 100%;
-      overflow: hidden;
-      background: #000;
-      border-radius: 24px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: var(--shadow);
-      margin: 0 auto;
-    }
-
-    .player-container:fullscreen {
-      width: 100vw;
-      height: 100vh;
-      max-width: none;
-      display: flex;
-      align-items: center;
-      border-radius: 0;
-      border: none;
-    }
-
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      display: block;
-      background: #000;
-    }
-
-    #danmaku-layer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      overflow: hidden;
-      z-index: 999;
-      contain: layout style paint;
-    }
-
-    .danmu {
-      position: absolute;
-      left: 0;
-      top: 0;
-      transform: translate3d(-9999px, -9999px, 0);
-      white-space: nowrap;
-      font-weight: bold;
-      text-shadow: 1px 1px 2px black, 0 0 2px black;
-      backface-visibility: hidden;
-      will-change: transform;
-      contain: layout style paint;
-    }
-
-    @media (max-width: 980px) {
-      .settings-row {
-        grid-column: 1 / -1;
-      }
-
-      .viewer-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 720px) {
-      body {
-        padding: 16px 12px 22px;
-      }
-
-      .controls {
-        flex-direction: column;
-        padding: 12px;
-      }
-
-      .settings-row {
-        grid-template-columns: 1fr;
-      }
-
-      .player-container {
-        border-radius: 18px;
-      }
-
-      .playlist-item {
-        grid-template-columns: 96px minmax(0, 1fr);
-      }
-
-      .playlist-item-name {
-        font-size: 13px;
-      }
-    }
-
-    .toast-container {
-      position: fixed;
-      top: 16px;
-      right: 16px;
-      z-index: 99999;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      pointer-events: none;
-    }
-
+    /* Toast */
+    .toast-container { position: fixed; top: 16px; right: 16px; z-index: 99999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
     .toast {
-      max-width: 360px;
-      padding: 12px 16px;
-      border-radius: 12px;
-      background: rgba(20, 29, 41, 0.92);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: var(--text);
-      font-size: 13px;
-      line-height: 1.5;
-      backdrop-filter: blur(18px);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-      animation: toastIn 0.3s ease;
-      pointer-events: auto;
+      max-width: 380px; padding: 14px 18px; border-radius: var(--radius-md);
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text-main); font-size: 13px; line-height: 1.5;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1); animation: toastIn 0.3s ease; pointer-events: auto;
     }
+    .toast.removing { animation: toastOut 0.25s ease forwards; }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(40px); } }
 
-    .toast.removing {
-      animation: toastOut 0.25s ease forwards;
+    /* Responsive */
+    @media (max-width: 980px) {
+      .viewer-grid { grid-template-columns: 1fr; }
     }
-
-    @keyframes toastIn {
-      from { opacity: 0; transform: translateX(40px); }
-      to { opacity: 1; transform: translateX(0); }
+    @media (max-width: 720px) {
+      body { padding: 16px 12px; }
+      .controls { flex-direction: column; }
+      .playlist-item { grid-template-columns: 96px minmax(0, 1fr); }
+      .player-container { border-radius: var(--radius-md); }
     }
-
-    @keyframes toastOut {
-      from { opacity: 1; transform: translateX(0); }
-      to { opacity: 0; transform: translateX(40px); }
-    }
-
   </style>
 </head>
 
 <body>
   <div class="toast-container" id="toastContainer"></div>
   <main class="page">
+    <div class="app-header">
+      <div class="app-header-title">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5" ry="2.5"></rect><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg>
+        B站弹幕播放器
+      </div>
+      <div class="header-actions">
+        <button id="fullScreenBtn" class="btn btn-secondary">全屏播放</button>
+        <button id="renamePageBtn" class="btn btn-ghost">工具</button>
+        <button id="managePageBtn" class="btn btn-ghost">管理</button>
+      </div>
+    </div>
+
     <section class="workspace">
-      <div class="controls">
-        <input type="file" id="videoFile" accept="video/*" multiple>
-        <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
-        <button id="pickFolderBtn">选择文件夹</button>
-        <select id="sourceSelect" title="弹幕源" style="flex:0 0 92px">
-          <option value="bili">B站弹幕</option>
-          <option value="qq">腾讯弹幕</option>
-          <option value="mango">芒果弹幕</option>
-        </select>
-        <input type="text" id="bvidInput" placeholder="输入BV号、ep号或VID">
-         <button id="renamePageBtn">tools</button>
-        <button id="toggleSettingsBtn">弹幕设置</button>
-        <button id="fullScreenBtn">全屏播放</button>
-        <div class="settings-row hidden">
-          <div class="setting-group">
-            <label for="speedControl">弹幕速度</label>
-            <input type="range" id="speedControl" min="8" max="40" value="20" step="1">
-            <span class="setting-value" id="speedValue">20秒</span>
-          </div>
-          <div class="setting-group">
-            <label for="areaControl">显示区域</label>
-            <input type="range" id="areaControl" min="10" max="100" value="25" step="5">
-            <span class="setting-value" id="areaValue">25%</span>
-          </div>
-          <div class="setting-group">
-            <label for="offsetControl">弹幕偏移</label>
-            <input type="range" id="offsetControl" min="-120" max="120" value="0" step="1">
-            <span class="setting-value" id="offsetValue">0秒</span>
-          </div>
-           <select id="strategySelect" title="弹幕获取策略">
-            <option value="xml">XML</option>
-            <option value="seg.so" selected>seg.so</option>
+
+      <div class="card">
+        <div class="controls">
+          <input type="file" id="videoFile" accept="video/*" multiple>
+          <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
+          <button id="pickFolderBtn" class="btn btn-secondary">选择文件夹</button>
+          <select id="sourceSelect" title="弹幕源" style="flex:0 0 100px">
+            <option value="bili">B站弹幕</option>
+            <option value="qq">腾讯弹幕</option>
+            <option value="mango">芒果弹幕</option>
           </select>
-          <button id="loadDanmu">加载弹幕</button>
-          <button id="refreshDanmuBtn">刷新弹幕</button>
-          <button id="toggleStatusBtn">状态栏</button>
+          <input type="text" id="bvidInput" placeholder="输入BV号、ep号或VID">
+          <button id="toggleSettingsBtn" class="btn btn-secondary">弹幕设置</button>
+          <div class="settings-row hidden">
+            <div class="setting-group">
+              <label for="speedControl">弹幕速度</label>
+              <input type="range" id="speedControl" min="8" max="40" value="20" step="1">
+              <span class="setting-value" id="speedValue">20秒</span>
+            </div>
+            <div class="setting-group">
+              <label for="areaControl">显示区域</label>
+              <input type="range" id="areaControl" min="10" max="100" value="25" step="5">
+              <span class="setting-value" id="areaValue">25%</span>
+            </div>
+            <div class="setting-group">
+              <label for="offsetControl">弹幕偏移</label>
+              <input type="range" id="offsetControl" min="-120" max="120" value="0" step="1">
+              <span class="setting-value" id="offsetValue">0秒</span>
+            </div>
+            <select id="strategySelect" title="弹幕获取策略" style="flex:0 0 auto; min-width: 88px;">
+              <option value="xml">XML</option>
+              <option value="seg.so" selected>seg.so</option>
+            </select>
+            <button id="loadDanmu" class="btn btn-primary">加载弹幕</button>
+            <button id="refreshDanmuBtn" class="btn btn-secondary">刷新弹幕</button>
+            <button id="toggleStatusBtn" class="btn btn-secondary">状态栏</button>
+          </div>
         </div>
       </div>
-      <div class="control-hint">如果从 iPad 等设备访问网页，请点击“获取服务器视频”播放 Mac 同目录下的视频文件；自动弹幕会优先识别文件名里的 `ep473307` 或 `BV...`。</div>
+
+      <div class="control-hint">从 iPad 等设备访问网页，请点击"获取服务器视频"播放 Mac 同目录下的视频文件；文件自动识别 ep 号或 BV 号。</div>
 
       <div class="status-bar" id="statusBar">
         <div class="status-item">策略 <strong id="statusStrategy">seg.so</strong></div>
@@ -713,19 +352,20 @@
               <div class="playlist-title">播放列表</div>
               <div class="playlist-meta" id="playlistMeta">未加载文件</div>
             </div>
-            <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
               <label class="toggle-label">
                 <input type="checkbox" id="autoplayToggle" checked>
-                <span class="toggle-text">连播</span>
+                连播
               </label>
-              <button id="prevVideoBtn" type="button">上一页</button>
-              <button id="nextVideoBtn" type="button">下一页</button>
+              <button id="prevVideoBtn" class="btn btn-secondary" style="padding:6px 12px; font-size:12px;">上一页</button>
+              <button id="nextVideoBtn" class="btn btn-secondary" style="padding:6px 12px; font-size:12px;">下一页</button>
             </div>
           </div>
-          <select id="folderSelect" title="服务器视频目录" style="width:100%; margin-bottom:8px;"></select>
+          <select id="folderSelect" title="服务器视频目录" style="width:100%; margin-bottom:10px; font-size:12px;"></select>
           <div class="playlist-list" id="playlist"></div>
         </aside>
       </div>
+
     </section>
   </main>
 
@@ -742,6 +382,7 @@
     const toggleStatusBtn = document.getElementById('toggleStatusBtn');
     const toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
     const renamePageBtn = document.getElementById('renamePageBtn');
+    const managePageBtn = document.getElementById('managePageBtn');
     const fullScreenBtn = document.getElementById('fullScreenBtn');
     const prevVideoBtn = document.getElementById('prevVideoBtn');
     const nextVideoBtn = document.getElementById('nextVideoBtn');
@@ -1762,6 +1403,10 @@
 
     renamePageBtn.addEventListener('click', () => {
       window.open('/rename.html', '_blank');
+    });
+
+    managePageBtn.addEventListener('click', () => {
+      window.open('/manage.html', '_blank');
     });
 
     fullScreenBtn.addEventListener('click', () => {

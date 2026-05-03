@@ -28,6 +28,7 @@ const META_DIR = path.join(CACHE_DIR, 'meta');
 const CONVERT_HISTORY_FILE = path.join(CACHE_DIR, 'convert_history.json');
 const FOLDER_HISTORY_FILE = path.join(CACHE_DIR, 'folder_history.json');
 const OVERLAY_CONFIG_FILE = path.join(CACHE_DIR, 'overlay_config.json');
+const RETENTION_CONFIG_FILE = path.join(CACHE_DIR, 'retention_config.json');
 let VIDEO_DIR = process.env.VIDEO_DIR || path.join(__dirname, 'videos');
 const danmuProgressMap = new Map();
 const convertTasks = new Map();
@@ -943,6 +944,154 @@ app.get('/api/convert/history', (req, res) => {
     res.json(success([]));
   }
 });
+
+// ==================== 视频管理 API ====================
+
+app.get('/api/manage/videos', (req, res) => {
+  try {
+    const folder = req.query.folder;
+    let files;
+    if (folder) {
+      const resolved = path.resolve(folder);
+      if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
+        return res.status(400).json(fail(400, '非法目录路径'));
+      }
+      files = [];
+      let entries;
+      try { entries = fs.readdirSync(resolved, { withFileTypes: true }); } catch { entries = []; }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || !entry.isFile() || !isVideoExt(entry.name)) continue;
+        const fp = path.join(resolved, entry.name);
+        const stat = fs.statSync(fp);
+        files.push({
+          name: entry.name,
+          path: fp,
+          size: stat.size,
+          mtime: stat.mtimeMs,
+          folder: path.relative(FOLDERS_BASE, resolved) || ''
+        });
+      }
+    } else {
+      files = scanVideoFiles(FOLDERS_BASE).map(f => {
+        const stat = fs.statSync(f.path);
+        return {
+          name: f.name.split(path.sep).pop(),
+          path: f.path,
+          size: stat.size,
+          mtime: stat.mtimeMs,
+          folder: path.relative(FOLDERS_BASE, path.dirname(f.path)) || ''
+        };
+      });
+    }
+    files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
+    res.json(success(files));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json(fail(500, '读取视频列表失败'));
+  }
+});
+
+app.delete('/api/manage/video', (req, res) => {
+  try {
+    const filePath = req.body.path;
+    if (!filePath || typeof filePath !== 'string') {
+      return res.status(400).json(fail(400, '缺少 path 参数'));
+    }
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
+      return res.status(400).json(fail(400, '非法文件路径'));
+    }
+    if (!fs.existsSync(resolved)) {
+      return res.status(404).json(fail(404, '文件不存在'));
+    }
+    if (!fs.statSync(resolved).isFile()) {
+      return res.status(400).json(fail(400, '只能删除文件'));
+    }
+    fs.unlinkSync(resolved);
+    console.log(`🗑️  [manage] 删除视频: ${resolved}`);
+    res.json(success(null, '删除成功'));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json(fail(500, err.message));
+  }
+});
+
+app.get('/api/manage/retention', (req, res) => {
+  try {
+    if (!fs.existsSync(RETENTION_CONFIG_FILE)) {
+      return res.json(success({ folders: {} }));
+    }
+    res.json(success(JSON.parse(fs.readFileSync(RETENTION_CONFIG_FILE, 'utf-8'))));
+  } catch {
+    res.json(success({ folders: {} }));
+  }
+});
+
+app.put('/api/manage/retention', (req, res) => {
+  try {
+    const { folder, days } = req.body || {};
+    if (!folder || typeof folder !== 'string') {
+      return res.status(400).json(fail(400, '缺少 folder 参数'));
+    }
+    if (typeof days !== 'number' || days < 0 || !Number.isInteger(days)) {
+      return res.status(400).json(fail(400, 'days 必须是非负整数'));
+    }
+    const resolved = path.resolve(folder);
+    if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
+      return res.status(400).json(fail(400, '非法目录路径'));
+    }
+    let config = { folders: {} };
+    if (fs.existsSync(RETENTION_CONFIG_FILE)) {
+      config = JSON.parse(fs.readFileSync(RETENTION_CONFIG_FILE, 'utf-8'));
+    }
+    if (!config.folders) config.folders = {};
+    if (days === 0) {
+      delete config.folders[resolved];
+    } else {
+      config.folders[resolved] = days;
+    }
+    fs.writeFileSync(RETENTION_CONFIG_FILE, JSON.stringify(config, null, 2));
+    res.json(success(config));
+  } catch (err) {
+    res.status(500).json(fail(500, err.message));
+  }
+});
+
+// 视频自动过期清理
+function cleanupVideos() {
+  try {
+    if (!fs.existsSync(RETENTION_CONFIG_FILE)) return;
+    const config = JSON.parse(fs.readFileSync(RETENTION_CONFIG_FILE, 'utf-8'));
+    const folders = config.folders || {};
+    const now = Date.now();
+    let totalDeleted = 0;
+    for (const [folderPath, days] of Object.entries(folders)) {
+      const keepDays = Number(days);
+      if (!keepDays || keepDays <= 0) continue;
+      if (!fs.existsSync(folderPath)) continue;
+      const maxAge = keepDays * 86400000;
+      let entries;
+      try { entries = fs.readdirSync(folderPath, { withFileTypes: true }); } catch { continue; }
+      for (const entry of entries) {
+        if (!entry.isFile() || !isVideoExt(entry.name)) continue;
+        const filePath = path.join(folderPath, entry.name);
+        try {
+          const stat = fs.statSync(filePath);
+          if (now - stat.mtimeMs > maxAge) {
+            fs.unlinkSync(filePath);
+            totalDeleted++;
+            console.log(`🗑️  [auto-cleanup] 删除过期视频: ${filePath}`);
+          }
+        } catch {}
+      }
+    }
+    if (totalDeleted > 0) console.log(`🗑️  [auto-cleanup] 本轮共清理 ${totalDeleted} 个过期视频`);
+  } catch (err) {
+    console.error('[auto-cleanup] 清理出错:', err.message);
+  }
+}
+cleanupVideos();
+setInterval(cleanupVideos, 3600000);
 
 // playback 目录自动过期清理
 const PLAYBACK_MAX_AGE = (Number(process.env.PLAYBACK_MAX_AGE) || 30) * 86400000; // 默认 30 天
