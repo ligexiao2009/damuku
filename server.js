@@ -70,6 +70,11 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/', (req, res) => res.redirect('/video.html'));
+app.get('/ipad', (req, res) => res.redirect('/ipad.html'));
+app.get('/manage', (req, res) => res.redirect('/manage.html'));
+app.get('/rename', (req, res) => res.redirect('/rename.html'));
+
 // ==================== 本地工具函数 ====================
 
 /** 获取本机局域网 IP 地址（192.168.x.x），未找到返回 'localhost'。 */
