@@ -53,6 +53,7 @@
   const timestampBtn = document.getElementById('timestamp-btn');
 
   let fadeTimer = null;
+  let hideTimer = null;
 
   // Engine
   const engine = new DanmakuEngine(danmakuLayer, {
@@ -403,16 +404,27 @@
     else showPanel();
   }
 
+  function resetHideTimer() {
+    clearHideTimer();
+    hideTimer = setTimeout(hidePanel, 20000);
+  }
+
+  function clearHideTimer() {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  }
+
   function showPanel() {
     panelVisible = true;
     controlPanel.classList.add('visible');
     if (window.electronAPI) window.electronAPI.setClickThrough(false);
+    resetHideTimer();
   }
 
   function hidePanel() {
     panelVisible = false;
     controlPanel.classList.remove('visible');
     if (window.electronAPI) window.electronAPI.setClickThrough(true);
+    clearHideTimer();
   }
 
   // --- Status ---
@@ -828,6 +840,9 @@
   hideBtn.addEventListener('click', (e) => { e.stopPropagation(); hidePanel(); });
   dragHandle.appendChild(hideBtn);
 
+  // 面板内任意点击重置自动隐藏计时
+  controlPanel.addEventListener('click', () => { resetHideTimer(); });
+
   dragHandle.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const rect = controlPanel.getBoundingClientRect();
@@ -927,12 +942,12 @@
   if (window.electronAPI) {
     showPanel();
     fadeIndicator();
-    setTimeout(hidePanel, 3000);
+    setTimeout(hidePanel, 20000);
   } else {
     // In browser mode, show panel by default too
     showPanel();
     fadeIndicator();
-    setTimeout(hidePanel, 3000);
+    setTimeout(hidePanel, 20000);
   }
 
   // Fade indicator on panel toggle
