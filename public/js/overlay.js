@@ -699,7 +699,10 @@
     if (!name) return '';
     const base = String(name).replace(/\.[^.]+$/, '');
     const m = base.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/i);
-    return m ? m[1] : '';
+    if (!m) return '';
+    // 排除 BV 号
+    if (/^BV/i.test(m[1])) return '';
+    return m[1];
   }
 
   function getVideoIdForSource(name, source) {
@@ -914,10 +917,12 @@
   if (window.electronAPI) {
     showPanel();
     fadeIndicator();
+    setTimeout(hidePanel, 3000);
   } else {
     // In browser mode, show panel by default too
     showPanel();
     fadeIndicator();
+    setTimeout(hidePanel, 3000);
   }
 
   // Fade indicator on panel toggle
