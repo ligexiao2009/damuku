@@ -619,10 +619,6 @@
         e.preventDefault();
         togglePanel();
         break;
-      case 'Escape':
-        e.preventDefault();
-        togglePanel();
-        break;
     }
   });
 
