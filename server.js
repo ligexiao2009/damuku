@@ -944,6 +944,27 @@ app.get('/api/convert/history', (req, res) => {
   }
 });
 
+// playback 目录自动过期清理
+const PLAYBACK_MAX_AGE = (Number(process.env.PLAYBACK_MAX_AGE) || 30) * 86400000; // 默认 30 天
+function cleanupPlayback() {
+  if (!fs.existsSync(PLAYBACK_DIR)) return;
+  const now = Date.now();
+  let count = 0;
+  fs.readdirSync(PLAYBACK_DIR).forEach(f => {
+    const file = path.join(PLAYBACK_DIR, f);
+    try {
+      const stat = fs.statSync(file);
+      if (now - stat.mtimeMs > PLAYBACK_MAX_AGE) {
+        fs.unlinkSync(file);
+        count++;
+      }
+    } catch {}
+  });
+  if (count > 0) console.log(`🗑️  自动清理 ${count} 个过期播放记录`);
+}
+cleanupPlayback();
+setInterval(cleanupPlayback, 3600000); // 每小时检查一次
+
 const localIP = getLocalIP();
 app.listen(PORT, '0.0.0.0', () => {
   console.log('服务器已在局域网启动！');

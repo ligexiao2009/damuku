@@ -261,6 +261,18 @@
     }
 
     setStatus(`${refresh ? '重新' : ''}加载${label}弹幕中...`);
+    let progressTimer;
+    if (source === 'bili') {
+      progressTimer = setInterval(async () => {
+        try {
+          const p = await api(`${SERVER}/api/danmu/progress?id=${encodeURIComponent(id)}`);
+          if (p) {
+            const phase = p.phase === 'retrying' ? '重试' : '加载';
+            setStatus(`正在${phase}弹幕... ${p.current}/${p.total}`);
+          }
+        } catch {}
+      }, 800);
+    }
     try {
       const params = new URLSearchParams({ source, id });
       if (source === 'bili') params.set('strategy', 'seg.so');
@@ -272,6 +284,8 @@
       setStatus(`已加载 ${data.danmus.length} 条弹幕${refresh ? '（已刷新）' : ''} · ${id}`);
     } catch (err) {
       setStatus(`加载失败: ${err.message}`);
+    } finally {
+      if (progressTimer) clearInterval(progressTimer);
     }
   }
 
