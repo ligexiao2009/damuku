@@ -1130,6 +1130,28 @@ function cleanupVideos() {
       } catch {}
     }
 
+    // 清理无效规则（文件/目录已不存在）
+    let configChanged = false;
+    const cleanFiles = config.files || {};
+    for (const filePath of Object.keys(cleanFiles)) {
+      if (!fs.existsSync(filePath)) {
+        delete config.files[filePath];
+        configChanged = true;
+        console.log(`🧹 [auto-cleanup] 移除无效规则(文件已删): ${filePath}`);
+      }
+    }
+    const cleanFolders = config.folders || {};
+    for (const folderPath of Object.keys(cleanFolders)) {
+      if (!fs.existsSync(folderPath)) {
+        delete config.folders[folderPath];
+        configChanged = true;
+        console.log(`🧹 [auto-cleanup] 移除无效规则(目录已删): ${folderPath}`);
+      }
+    }
+    if (configChanged) {
+      fs.writeFileSync(RETENTION_CONFIG_FILE, JSON.stringify(config, null, 2));
+    }
+
     if (totalDeleted > 0) console.log(`🗑️  [auto-cleanup] 本轮共清理 ${totalDeleted} 个过期视频`);
   } catch (err) {
     console.error('[auto-cleanup] 清理出错:', err.message);

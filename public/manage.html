@@ -662,7 +662,7 @@
           html += `
             <div class="table-row">
               <span class="col-name" title="${esc(f.name)}">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><circle cx="12" cy="13" r="2"></circle><line x1="12" y1="15" x2="12" y2="18"></line></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                 ${esc(f.name)}
               </span>
               <span class="col-size">${formatSize(f.size)}</span>
@@ -850,10 +850,10 @@
             <div class="policy-item">
               <div class="policy-info">
                 <div class="policy-name">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary); flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary); flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><path d="M12 11v6"></path><path d="M9 14h6"></path></svg>
                   ${esc(name)}
                 </div>
-                <div class="policy-days">保留周期: ${days} 天（整个目录）</div>
+                <div class="policy-days">保留周期: ${days} 天 · 整个目录</div>
               </div>
               <button class="btn-danger remove-btn" data-folder="${esc(fp)}">移除</button>
             </div>`;
@@ -866,10 +866,10 @@
             <div class="policy-item">
               <div class="policy-info">
                 <div class="policy-name">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#f59e0b; flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#f59e0b; flex-shrink:0;"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                   ${esc(fname)}
                 </div>
-                <div class="policy-days">保留周期: ${fdays} 天（单文件）</div>
+                <div class="policy-days">保留周期: ${fdays} 天 · 单文件</div>
               </div>
               <button class="btn-danger remove-file-btn" data-file="${esc(fpath)}">移除</button>
             </div>`;
