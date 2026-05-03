@@ -205,7 +205,7 @@
 
     .table-header {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 100px 110px 80px;
+      grid-template-columns: minmax(0, 1fr) 100px 110px 55px 55px;
       gap: 16px;
       padding: 12px 20px;
       background: var(--bg);
@@ -216,6 +216,12 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
+    .sortable {
+      cursor: pointer; user-select: none; transition: color 0.15s;
+    }
+    .sortable:hover { color: var(--primary); }
+    .sortable.sorted { color: var(--primary); }
+    .sort-arrow { font-size: 10px; }
 
     .table-body {
       max-height: 400px;
@@ -224,7 +230,7 @@
 
     .table-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 100px 110px 80px;
+      grid-template-columns: minmax(0, 1fr) 100px 110px 55px 55px;
       gap: 16px;
       align-items: center;
       padding: 14px 20px;
@@ -249,6 +255,10 @@
 
     .col-name svg { flex-shrink: 0; color: var(--text-muted); }
     .col-size, .col-date { font-size: 13px; color: var(--text-muted); }
+    .col-date.remain-ok { color: #16a34a; font-weight: 600; }
+    .col-date.remain-warn { color: #d97706; font-weight: 600; }
+    .col-date.remain-today { color: #ea580c; font-weight: 600; }
+    .col-date.remain-expired { color: #dc2626; font-weight: 600; }
     
     /* 按钮 */
     .btn-danger {
@@ -268,6 +278,15 @@
       background: var(--danger-hover);
       color: #991b1b;
     }
+    .retention-btn {
+      padding: 5px 8px; font-size: 11px; font-weight: 500;
+      color: var(--primary); background: var(--primary-light);
+      border: none; border-radius: var(--radius-sm); cursor: pointer;
+      transition: all 0.2s; justify-self: end;
+    }
+    .retention-btn:hover { background: #c7d2fe; color: #3730a3; }
+    .retention-btn.has-rule { background: #fef3c7; color: #92400e; }
+    .retention-btn.has-rule:hover { background: #fde68a; }
 
     .btn-primary {
       display: inline-flex;
@@ -359,11 +378,38 @@
       gap: 16px;
     }
 
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+      animation: fadeIn 0.2s ease;
+      backdrop-filter: blur(4px);
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    .modal-dialog {
+      background: var(--surface); border-radius: var(--radius-lg); box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+      padding: 28px; width: min(400px, 90vw); animation: slideUp 0.25s ease;
+    }
+    .modal-dialog h3 { font-size: 17px; font-weight: 600; margin-bottom: 6px; color: var(--text-main); }
+    .modal-dialog .modal-file { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; word-break: break-all; line-height: 1.4; }
+    .modal-dialog input[type=number] { width: 100%; text-align: center; font-size: 28px; font-weight: 600; padding: 12px; letter-spacing: -0.5px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+    .modal-actions button { flex: 1; padding: 10px; font-size: 14px; font-weight: 500; border-radius: var(--radius-sm); cursor: pointer; border: none; transition: all 0.2s; }
+    .modal-btn-cancel { background: var(--bg); color: var(--text-main); border: 1px solid var(--border); }
+    .modal-btn-cancel:hover { background: #e2e8f0; }
+    .modal-btn-confirm { background: var(--primary); color: #fff; }
+    .modal-btn-confirm:hover { background: var(--primary-hover); }
+    .modal-btn-remove { background: var(--danger-bg); color: var(--danger); font-size: 12px; padding: 6px 12px; margin-top: 8px; width: 100%; }
+    .modal-btn-remove:hover { background: var(--danger-hover); }
+    .modal-hint { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 8px; }
+
     @media (max-width: 768px) {
       .table-header, .table-row {
-        grid-template-columns: minmax(0, 1fr) 80px 70px;
+        grid-template-columns: minmax(0, 1fr) 80px 70px 48px 48px;
       }
       .col-date { display: none; }
+      .retention-btn { font-size: 10px; padding: 4px 6px; }
       .row-group { grid-template-columns: 1fr; }
     }
   </style>
@@ -403,11 +449,12 @@
       </div>
 
       <div class="table-container">
-        <div class="table-header">
-          <span>文件名称</span>
-          <span>大小</span>
-          <span class="col-date">修改日期</span>
+        <div class="table-header" id="tableHeader">
+          <span class="sortable" data-sort="name">文件名称<span class="sort-arrow"></span></span>
+          <span class="sortable" data-sort="size">大小<span class="sort-arrow"></span></span>
+          <span class="sortable col-date" data-sort="date">剩余<span class="sort-arrow"></span></span>
           <span style="text-align: right;">操作</span>
+          <span></span>
         </div>
         <div class="table-body" id="videoTableBody">
           <div class="loading-state">
@@ -454,6 +501,19 @@
 
   </div>
 
+  <div class="modal-overlay" id="retentionModal" style="display:none;">
+    <div class="modal-dialog">
+      <h3>设置自动清理</h3>
+      <div class="modal-file" id="modalFileName"></div>
+      <input type="number" id="modalRetentionDays" min="0" placeholder="保留天数" value="30">
+      <div class="modal-hint">0 = 取消清理规则</div>
+      <div class="modal-actions">
+        <button class="modal-btn-cancel" id="modalCancel">取消</button>
+        <button class="modal-btn-confirm" id="modalConfirm">确认</button>
+      </div>
+      <button class="modal-btn-remove" id="modalRemove">移除已有规则</button>
+    </div>
+  </div>
   <script>
     // 现代版 Toast 提示
     function toast(msg, isError) {
@@ -501,6 +561,15 @@
     var retentionFolderSelect = document.getElementById('retentionFolderSelect');
     var populating = false;
 
+    document.getElementById('tableHeader').addEventListener('click', function(e) {
+      var s = e.target.closest('.sortable');
+      if (!s) return;
+      var field = s.getAttribute('data-sort');
+      if (sortField === field) { sortDir = -sortDir; }
+      else { sortField = field; sortDir = 1; }
+      loadVideos(videoFolderSelect.value);
+    });
+
     async function loadFolders() {
       try {
         var folders = await api('/api/folders');
@@ -525,6 +594,40 @@
     var videoTableBody = document.getElementById('videoTableBody');
     var videoCount = document.getElementById('videoCount');
     var loadVideosReq = 0;
+    var sortField = 'name';
+    var sortDir = 1;
+
+    function sortFiles(files) {
+      if (sortField === 'size') {
+        files.sort(function(a, b) { return (a.size - b.size) * sortDir; });
+      } else if (sortField === 'date') {
+        files.sort(function(a, b) {
+          var ra = getRule(a.path, a.folder);
+          var rb = getRule(b.path, b.folder);
+          var dlA = ra ? (ra.setAt || a.mtime) + ra.days * 86400000 : Infinity;
+          var dlB = rb ? (rb.setAt || b.mtime) + rb.days * 86400000 : Infinity;
+          return (dlA - dlB) * sortDir;
+        });
+      } else {
+        files.sort(function(a, b) { return a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }) * sortDir; });
+      }
+    }
+
+    function updateSortHeaders() {
+      var headers = document.querySelectorAll('.sortable');
+      for (var i = 0; i < headers.length; i++) {
+        var h = headers[i];
+        h.classList.remove('sorted');
+        var arrow = h.querySelector('.sort-arrow');
+        if (arrow) arrow.textContent = '';
+      }
+      var active = document.querySelector('.sortable[data-sort="' + sortField + '"]');
+      if (active) {
+        active.classList.add('sorted');
+        var a = active.querySelector('.sort-arrow');
+        if (a) a.textContent = sortDir === 1 ? ' ▲' : ' ▼';
+      }
+    }
 
     async function loadVideos(folder) {
       var req = ++loadVideosReq;
@@ -533,6 +636,11 @@
         var url = '/api/manage/videos' + (folder ? '?folder=' + encodeURIComponent(folder) : '');
         var files = await api(url);
         if (req !== loadVideosReq) return;
+
+        try { retentionConfig = await api('/api/manage/retention'); } catch(e) { retentionConfig = { folders:{}, files:{} }; }
+        fileRetentionRules = retentionConfig.files || {};
+
+        sortFiles(files);
         var totalSize = files.reduce(function(s, f) { return s + f.size; }, 0);
         videoCount.textContent = files.length + ' 个项目 · 总计 ' + formatSize(totalSize);
         if (!files.length) {
@@ -546,6 +654,11 @@
         var html = '';
         for (var i = 0; i < files.length; i++) {
           var f = files[i];
+          var remain = getRemainingInfo(f.path, f.folder, f.mtime);
+          var rule = getRule(f.path, f.folder);
+          var dateCell = remain
+            ? '<span class="col-date ' + remain.cls + '" title="' + formatDate(f.mtime) + ' · 规则 ' + rule.days + ' 天 · 到期 ' + formatDate(rule.setAt + rule.days * 86400000) + '">' + remain.label + '</span>'
+            : '<span class="col-date" title="' + formatDate(f.mtime) + '">' + formatDate(f.mtime) + '</span>';
           html += `
             <div class="table-row">
               <span class="col-name" title="${esc(f.name)}">
@@ -553,8 +666,9 @@
                 ${esc(f.name)}
               </span>
               <span class="col-size">${formatSize(f.size)}</span>
-              <span class="col-date">${formatDate(f.mtime)}</span>
+              ${dateCell}
               <button class="btn-danger delete-btn" data-path="${esc(f.path)}">删除</button>
+              <button class="retention-btn" data-path="${esc(f.path)}" data-name="${esc(f.name)}" title="单独设置清理">清理</button>
             </div>`;
         }
         videoTableBody.innerHTML = html;
@@ -564,6 +678,15 @@
             e.stopPropagation(); deleteVideo(this.getAttribute('data-path'));
           });
         }
+        var rbs = videoTableBody.querySelectorAll('.retention-btn');
+        for (var k = 0; k < rbs.length; k++) {
+          rbs[k].addEventListener('click', function(e) {
+            e.stopPropagation();
+            setFileRetention(this.getAttribute('data-path'), this.getAttribute('data-name'));
+          });
+        }
+        updateSortHeaders();
+        loadRetentionBadges();
       } catch (err) {
         videoTableBody.innerHTML = '<div class="empty-state" style="color:var(--danger)">加载失败: ' + esc(err.message) + '</div>';
         videoCount.textContent = '0 个项目 · 总计 0 B';
@@ -584,6 +707,125 @@
       } catch (err) { toast('删除失败: ' + err.message, true); }
     }
 
+    var modal = document.getElementById('retentionModal');
+    var modalFileName = document.getElementById('modalFileName');
+    var modalRetentionDays = document.getElementById('modalRetentionDays');
+    var modalPendingPath = '';
+    var modalPendingName = '';
+
+    document.getElementById('modalCancel').addEventListener('click', function() {
+      modal.style.display = 'none';
+    });
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) modal.style.display = 'none';
+    });
+
+    document.getElementById('modalConfirm').addEventListener('click', async function() {
+      var days = parseInt(modalRetentionDays.value, 10);
+      if (isNaN(days) || days < 0) { toast('请输入有效的天数', true); return; }
+      modal.style.display = 'none';
+      try {
+        await api('/api/manage/retention', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'file', file: modalPendingPath, days: days })
+        });
+        toast(days === 0 ? '已移除清理规则' : '已设置 ' + days + ' 天清理规则');
+        loadVideos(videoFolderSelect.value);
+        loadRetention();
+      } catch (err) { toast('设置失败: ' + err.message, true); }
+    });
+
+    document.getElementById('modalRemove').addEventListener('click', async function() {
+      modal.style.display = 'none';
+      try {
+        await api('/api/manage/retention', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'file', file: modalPendingPath, days: 0 })
+        });
+        toast('已移除清理规则');
+        loadVideos(videoFolderSelect.value);
+        loadRetention();
+      } catch (err) { toast('移除失败: ' + err.message, true); }
+    });
+
+    function setFileRetention(filePath, fileName) {
+      modalPendingPath = filePath;
+      modalPendingName = fileName;
+      modalFileName.textContent = fileName;
+      var existing = fileRetentionRules[filePath];
+      var existingDays = existing ? (typeof existing === 'number' ? existing : existing.days) : 0;
+      modalRetentionDays.value = existingDays || 30;
+      document.getElementById('modalRemove').style.display = existingDays ? '' : 'none';
+      modal.style.display = 'flex';
+      modalRetentionDays.focus();
+      modalRetentionDays.select();
+    }
+
+    var fileRetentionRules = {};
+    var retentionConfig = { folders: {}, files: {} };
+
+    function getRule(filePath, folder) {
+      if (retentionConfig.files && retentionConfig.files[filePath] !== undefined) {
+        var r = retentionConfig.files[filePath];
+        return typeof r === 'number' ? { days: r, setAt: 0 } : r;
+      }
+      if (retentionConfig.folders && folder) {
+        var keys = Object.keys(retentionConfig.folders);
+        for (var i = 0; i < keys.length; i++) {
+          var key = keys[i];
+          if (folder === key || folder.startsWith(key + '/') || folder.startsWith(key) || key.endsWith('/' + folder)) {
+            var r = retentionConfig.folders[key];
+            return typeof r === 'number' ? { days: r, setAt: 0 } : r;
+          }
+        }
+        var fullPath = '/Users/yangyang/video/' + folder;
+        if (retentionConfig.folders[fullPath] !== undefined) {
+          var r2 = retentionConfig.folders[fullPath];
+          return typeof r2 === 'number' ? { days: r2, setAt: 0 } : r2;
+        }
+      }
+      return null;
+    }
+
+    function getRemainingInfo(filePath, folder, mtime) {
+      var rule = getRule(filePath, folder);
+      if (!rule || !rule.days || rule.days <= 0) return null;
+      var deadline = (rule.setAt || mtime) + rule.days * 86400000;
+      var remainingMs = deadline - Date.now();
+      var remainingDays = Math.ceil(remainingMs / 86400000);
+      var label;
+      if (remainingDays <= 0) label = '待清理';
+      else if (remainingDays === 1) label = '今日';
+      else label = remainingDays + '天';
+      var cls;
+      if (remainingDays <= 0) cls = 'remain-expired';
+      else if (remainingDays <= 1) cls = 'remain-today';
+      else if (remainingDays <= 7) cls = 'remain-warn';
+      else cls = 'remain-ok';
+      return { label: label, cls: cls, remainingDays: remainingDays };
+    }
+
+    async function loadRetentionBadges() {
+      try {
+        var config = await api('/api/manage/retention');
+        fileRetentionRules = config.files || {};
+        var btns = videoTableBody.querySelectorAll('.retention-btn');
+        for (var i = 0; i < btns.length; i++) {
+          var path = btns[i].getAttribute('data-path');
+          var hasRule = fileRetentionRules.hasOwnProperty(path);
+          btns[i].classList.toggle('has-rule', hasRule);
+          if (hasRule) {
+            var frd = typeof fileRetentionRules[path] === 'number' ? fileRetentionRules[path] : fileRetentionRules[path].days;
+            btns[i].textContent = frd + '天';
+            btns[i].title = '点击修改（当前: ' + frd + ' 天）';
+          } else {
+            btns[i].textContent = '清理';
+            btns[i].title = '单独设置清理';
+          }
+        }
+      } catch {}
+    }
+
     var policyList = document.getElementById('policyList');
 
     async function loadRetention() {
@@ -591,31 +833,55 @@
       try {
         var config = await api('/api/manage/retention');
         var folders = config.folders || {};
-        var entries = Object.keys(folders);
-        if (!entries.length) {
+        var files = config.files || {};
+        var fEntries = Object.keys(folders);
+        var fileEntries = Object.keys(files);
+
+        if (!fEntries.length && !fileEntries.length) {
           policyList.innerHTML = '<div class="empty-state" style="padding: 20px;">未配置任何自动清理规则</div>';
           return;
         }
         var html = '';
-        for (var i = 0; i < entries.length; i++) {
-          var fp = entries[i], days = folders[fp];
+        for (var i = 0; i < fEntries.length; i++) {
+          var fp = fEntries[i], rule = folders[fp];
+          var days = typeof rule === 'number' ? rule : rule.days;
           var name = fp.replace(/^\/Users\/[^/]+\/video\//, '') || fp;
           html += `
             <div class="policy-item">
               <div class="policy-info">
-                <div class="policy-name">${esc(name)}</div>
-                <div class="policy-days">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                  保留周期: ${days} 天
+                <div class="policy-name">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary); flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                  ${esc(name)}
                 </div>
+                <div class="policy-days">保留周期: ${days} 天（整个目录）</div>
               </div>
-              <button class="btn-danger remove-btn" data-folder="${esc(fp)}">移除规则</button>
+              <button class="btn-danger remove-btn" data-folder="${esc(fp)}">移除</button>
+            </div>`;
+        }
+        for (var j = 0; j < fileEntries.length; j++) {
+          var fpath = fileEntries[j], frule = files[fpath];
+          var fdays = typeof frule === 'number' ? frule : frule.days;
+          var fname = fpath.split('/').pop() || fpath;
+          html += `
+            <div class="policy-item">
+              <div class="policy-info">
+                <div class="policy-name">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#f59e0b; flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                  ${esc(fname)}
+                </div>
+                <div class="policy-days">保留周期: ${fdays} 天（单文件）</div>
+              </div>
+              <button class="btn-danger remove-file-btn" data-file="${esc(fpath)}">移除</button>
             </div>`;
         }
         policyList.innerHTML = html;
         var btns = policyList.querySelectorAll('.remove-btn');
         for (var k = 0; k < btns.length; k++) {
           btns[k].addEventListener('click', function() { removeRetention(this.getAttribute('data-folder')); });
+        }
+        var fbtns = policyList.querySelectorAll('.remove-file-btn');
+        for (var k = 0; k < fbtns.length; k++) {
+          fbtns[k].addEventListener('click', function() { removeFileRetention(this.getAttribute('data-file')); });
         }
       } catch (err) { policyList.innerHTML = '<div class="empty-state" style="color:var(--danger)">加载规则失败</div>'; }
     }
@@ -633,6 +899,16 @@
       } catch (err) { toast('保存失败: ' + err.message, true); }
     });
 
+    async function removeFileRetention(filePath) {
+      var name = filePath.split('/').pop();
+      if (!confirm('确定要移除 "' + name + '" 的清理规则吗？')) return;
+      try {
+        await api('/api/manage/retention', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'file', file: filePath, days: 0 }) });
+        toast('已移除');
+        loadRetention(); loadVideos(videoFolderSelect.value);
+      } catch (err) { toast('移除失败: ' + err.message, true); }
+    }
+
     async function removeRetention(folderPath) {
       if (!confirm('确定要移除此目录的清理规则吗？')) return;
       try {
@@ -641,5 +917,6 @@
       } catch (err) { toast('移除失败: ' + err.message, true); }
     }
   </script>
+
 </body>
 </html>

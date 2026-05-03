@@ -1034,27 +1034,43 @@ app.get('/api/manage/retention', (req, res) => {
 
 app.put('/api/manage/retention', (req, res) => {
   try {
-    const { folder, days } = req.body || {};
-    if (!folder || typeof folder !== 'string') {
-      return res.status(400).json(fail(400, '缺少 folder 参数'));
+    const { type, folder, file: filePath, path: filePathAlt, days } = req.body || {};
+    const targetPath = folder || filePath || filePathAlt;
+    if (!targetPath || typeof targetPath !== 'string') {
+      return res.status(400).json(fail(400, '缺少 folder/path 参数'));
     }
     if (typeof days !== 'number' || days < 0 || !Number.isInteger(days)) {
       return res.status(400).json(fail(400, 'days 必须是非负整数'));
     }
-    const resolved = path.resolve(folder);
+    const resolved = path.resolve(targetPath);
     if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
-      return res.status(400).json(fail(400, '非法目录路径'));
+      return res.status(400).json(fail(400, '非法路径'));
     }
-    let config = { folders: {} };
+    let config = { folders: {}, files: {} };
     if (fs.existsSync(RETENTION_CONFIG_FILE)) {
       config = JSON.parse(fs.readFileSync(RETENTION_CONFIG_FILE, 'utf-8'));
     }
-    if (!config.folders) config.folders = {};
-    if (days === 0) {
-      delete config.folders[resolved];
+
+    const isFile = type === 'file' || (filePath || filePathAlt);
+    if (isFile) {
+      if (!config.files) config.files = {};
+      if (days === 0) {
+        delete config.files[resolved];
+      } else {
+        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+          return res.status(400).json(fail(400, '文件不存在'));
+        }
+        config.files[resolved] = { days, setAt: Date.now() };
+      }
     } else {
-      config.folders[resolved] = days;
+      if (!config.folders) config.folders = {};
+      if (days === 0) {
+        delete config.folders[resolved];
+      } else {
+        config.folders[resolved] = { days, setAt: Date.now() };
+      }
     }
+
     fs.writeFileSync(RETENTION_CONFIG_FILE, JSON.stringify(config, null, 2));
     res.json(success(config));
   } catch (err) {
@@ -1067,11 +1083,14 @@ function cleanupVideos() {
   try {
     if (!fs.existsSync(RETENTION_CONFIG_FILE)) return;
     const config = JSON.parse(fs.readFileSync(RETENTION_CONFIG_FILE, 'utf-8'));
-    const folders = config.folders || {};
     const now = Date.now();
     let totalDeleted = 0;
-    for (const [folderPath, days] of Object.entries(folders)) {
-      const keepDays = Number(days);
+
+    // 逐文件夹清理
+    const folders = config.folders || {};
+    for (const [folderPath, rule] of Object.entries(folders)) {
+      const keepDays = typeof rule === 'number' ? rule : (rule.days || 0);
+      const setAt = typeof rule === 'number' ? 0 : (rule.setAt || 0);
       if (!keepDays || keepDays <= 0) continue;
       if (!fs.existsSync(folderPath)) continue;
       const maxAge = keepDays * 86400000;
@@ -1082,7 +1101,8 @@ function cleanupVideos() {
         const filePath = path.join(folderPath, entry.name);
         try {
           const stat = fs.statSync(filePath);
-          if (now - stat.mtimeMs > maxAge) {
+          const cutoff = setAt > 0 ? setAt + maxAge : stat.mtimeMs + maxAge;
+          if (now > cutoff) {
             fs.unlinkSync(filePath);
             totalDeleted++;
             console.log(`🗑️  [auto-cleanup] 删除过期视频: ${filePath}`);
@@ -1090,6 +1110,26 @@ function cleanupVideos() {
         } catch {}
       }
     }
+
+    // 逐文件清理
+    const files = config.files || {};
+    for (const [filePath, rule] of Object.entries(files)) {
+      const keepDays = typeof rule === 'number' ? rule : (rule.days || 0);
+      const setAt = typeof rule === 'number' ? 0 : (rule.setAt || 0);
+      if (!keepDays || keepDays <= 0) continue;
+      if (!fs.existsSync(filePath)) continue;
+      const maxAge = keepDays * 86400000;
+      try {
+        const stat = fs.statSync(filePath);
+        const cutoff = setAt > 0 ? setAt + maxAge : stat.mtimeMs + maxAge;
+        if (now > cutoff) {
+          fs.unlinkSync(filePath);
+          totalDeleted++;
+          console.log(`🗑️  [auto-cleanup] 删除过期视频(单独): ${filePath}`);
+        }
+      } catch {}
+    }
+
     if (totalDeleted > 0) console.log(`🗑️  [auto-cleanup] 本轮共清理 ${totalDeleted} 个过期视频`);
   } catch (err) {
     console.error('[auto-cleanup] 清理出错:', err.message);
