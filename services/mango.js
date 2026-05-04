@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 /**
  * 抓取芒果TV弹幕（按60秒分片，顺序探测，连续2次NoSuchKey停止）
@@ -19,7 +20,7 @@ async function fetchMangoDanmaku(videoId, dateStr, timeStr) {
 
   while (true) {
     const url = `${baseUrl}/${index}.json`;
-    console.log(`[mango] 请求: ${url}`);
+    logger.debug(`[mango] 请求: ${url}`);
 
     try {
       const res = await axios.get(url, { timeout: 10000 });
@@ -28,7 +29,7 @@ async function fetchMangoDanmaku(videoId, dateStr, timeStr) {
       // NoSuchKey 响应
       if (typeof data === 'string' && data.includes('NoSuchKey')) {
         noKeyCount++;
-        console.log(`[mango] segment ${index}: NoSuchKey (连续${noKeyCount}次)`);
+        logger.debug(`[mango] segment ${index}: NoSuchKey (连续${noKeyCount}次)`);
         if (noKeyCount >= 2) break;
         index++;
         continue;
@@ -38,14 +39,14 @@ async function fetchMangoDanmaku(videoId, dateStr, timeStr) {
       const items = data?.data?.items;
       if (!Array.isArray(items) || items.length === 0) {
         noKeyCount = 0;
-        console.log(`[mango] segment ${index}: 0 条弹幕`);
+        logger.debug(`[mango] segment ${index}: 0 条弹幕`);
         index++;
         continue;
       }
 
       noKeyCount = 0;
       const sizeKB = (JSON.stringify(data).length / 1024).toFixed(1);
-      console.log(`[mango] segment ${index}: ${items.length} 条弹幕, ${sizeKB} KB`);
+      logger.debug(`[mango] segment ${index}: ${items.length} 条弹幕, ${sizeKB} KB`);
 
       for (const d of items) {
         if (!d.content) continue;
@@ -59,7 +60,7 @@ async function fetchMangoDanmaku(videoId, dateStr, timeStr) {
     } catch (err) {
       noKeyCount++;
       const status = err.response?.status || err.code;
-      console.log(`[mango] segment ${index}: 请求失败 (${status})，连续${noKeyCount}次`);
+      logger.debug(`[mango] segment ${index}: 请求失败 (${status})，连续${noKeyCount}次`);
       if (noKeyCount >= 2) break;
       index++;
       continue;
@@ -68,7 +69,7 @@ async function fetchMangoDanmaku(videoId, dateStr, timeStr) {
     index++;
   }
 
-  console.log(`[mango] 完成，共 ${result.length} 条弹幕，${index + 1} 个分片`);
+  logger.info(`[mango] 完成，共 ${result.length} 条弹幕，${index + 1} 个分片`);
   return result.sort((a, b) => a.time - b.time);
 }
 

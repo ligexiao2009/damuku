@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { getVideoMimeType } = require('../utils/video');
+const logger = require('../utils/logger');
 
 /** 以 HTTP 流方式直接传输视频文件，支持 Range 请求。 */
 function streamDirect(videoPath, req, res) {
@@ -72,11 +73,11 @@ function transcodeStream(videoPath, req, res) {
 
   ffmpeg.stderr.on('data', data => {
     const msg = data.toString();
-    if (msg) console.log('[ffmpeg]', msg.trim());
+    if (msg) logger.debug('[ffmpeg]', msg.trim());
   });
 
   ffmpeg.on('error', err => {
-    console.error('FFmpeg 启动失败:', err);
+    logger.error('FFmpeg 启动失败:', err);
     if (!res.headersSent) {
       res.status(500).send('FFmpeg 启动失败');
     } else {
@@ -107,7 +108,7 @@ async function generateLocalThumb(videoPath, thumbPath) {
 
     ffmpeg.stderr.on('data', data => {
       const msg = data.toString();
-      if (msg) console.log('[ffmpeg-thumb]', msg.trim());
+      if (msg) logger.debug('[ffmpeg-thumb]', msg.trim());
     });
 
     ffmpeg.on('error', reject);

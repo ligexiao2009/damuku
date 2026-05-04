@@ -1,24 +1,25 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 const rand = () => Math.random().toString();
 
 async function fetchCount(matchId, type) {
   const url = `https://dan.zhibo8.cc/data/2026/${type}/${matchId}_count.htm?rand=${rand()}`;
-  console.log(`📡 [zhibo8] FETCH count: ${url}`);
+  logger.debug(`📡 [zhibo8] FETCH count: ${url}`);
   const res = await axios.get(url, {
     headers: { referer: 'https://www.zhibo8.com/', 'user-agent': 'Mozilla/5.0' },
   });
-  console.log(`📡 [zhibo8] COUNT res:`, JSON.stringify(res.data));
+  logger.debug(`📡 [zhibo8] COUNT res:`, JSON.stringify(res.data));
   return res.data;
 }
 
 async function fetchPage(matchId, type, page) {
   const url = `https://dan.zhibo8.cc/data/2026/${type}/${matchId}_${page}.htm?rand=${rand()}`;
-  console.log(`📦 [zhibo8] FETCH page: ${url}`);
+  logger.debug(`📦 [zhibo8] FETCH page: ${url}`);
   const res = await axios.get(url, {
     headers: { referer: 'https://www.zhibo8.com/', 'user-agent': 'Mozilla/5.0' },
   });
-  console.log(`📦 [zhibo8] PAGE res: ${Array.isArray(res.data) ? res.data.length + ' items' : JSON.stringify(res.data).slice(0, 200)}`);
+  logger.debug(`📦 [zhibo8] PAGE res: ${Array.isArray(res.data) ? res.data.length + ' items' : JSON.stringify(res.data).slice(0, 200)}`);
   return res.data;
 }
 
@@ -37,11 +38,11 @@ async function fetchZhibo8Danmaku(matchId, type = 'zuqiu', lastMaxId = 0) {
   if (num <= 0) return { danmus: [], maxId: lastMaxId };
 
   const page = Math.ceil(num / perPage) - 1;
-  console.log(`📊 [zhibo8] type=${type} num=${num} perPage=${perPage} page=${page} lastMaxId=${lastMaxId}`);
+  logger.debug(`📊 [zhibo8] type=${type} num=${num} perPage=${perPage} page=${page} lastMaxId=${lastMaxId}`);
 
   const list = await fetchPage(matchId, type, page);
   if (!Array.isArray(list)) {
-    console.log(`⚠️ [zhibo8] PAGE 返回值不是数组:`, typeof list);
+    logger.warn(`⚠️ [zhibo8] PAGE 返回值不是数组:`, typeof list);
     return [];
   }
 
@@ -63,7 +64,7 @@ async function fetchZhibo8Danmaku(matchId, type = 'zuqiu', lastMaxId = 0) {
     }
   }
 
-  console.log(`💬 [zhibo8] 新增 ${newItems.length} 条弹幕 (maxId=${maxId})`);
+  logger.debug(`💬 [zhibo8] 新增 ${newItems.length} 条弹幕 (maxId=${maxId})`);
   return { danmus: newItems, maxId };
 }
 

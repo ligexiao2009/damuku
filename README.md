@@ -42,6 +42,7 @@ VIDEO_DIR=/Users/yourname/video        # 视频文件目录
 DANMU_CACHE_DIR=/Users/yourname/video/danmu  # 弹幕缓存
 PORT=5001                               # 服务端口
 BILI_SESSDATA=your_sessdata_here        # B站 Cookie（可选）
+LOG_LEVEL=info                          # 日志级别: silent/error/warn/info/debug
 ```
 
 ## 弹幕源速查

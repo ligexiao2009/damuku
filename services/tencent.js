@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 const util = require('util');
 
 // 将 setTimeout Promise 化
@@ -28,7 +29,7 @@ async function fetchTencentDanmaku(vid, durationMs) {
       );
 
       const list = res.data?.barrage_list || [];
-      console.log(`[tencent] 分段 ${start}-${end} 获取到 ${list.length} 条弹幕`);
+      logger.debug(`[tencent] 分段 ${start}-${end} 获取到 ${list.length} 条弹幕`);
       for (const d of list) {
         if (!d.content) continue;
         let color = '#ffffff';
@@ -47,7 +48,7 @@ async function fetchTencentDanmaku(vid, durationMs) {
         });
       }
     } catch (err) {
-      console.error(`[tencent] 分段 ${start}-${end} 请求失败:`, err.message);
+      logger.warn(`[tencent] 分段 ${start}-${end} 请求失败:`, err.message);
     }
   }
 

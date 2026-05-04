@@ -1,6 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../utils/logger');
 
 /** 构造请求 B站 API 的通用请求头，包含 Cookie 认证。 */
 function getRequestHeaders() {
@@ -16,7 +17,7 @@ function getRequestHeaders() {
 
 /** 根据 BV 号请求视频元信息（cid、时长、标题等）。 */
 async function fetchVideoMetaByBvid(bvid) {
-  console.log('Fetching video metadata for BV ID:', bvid);
+  logger.debug('Fetching video metadata for BV ID:', bvid);
   const url = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`;
   const res = await axios.get(url, { headers: getRequestHeaders(), timeout: 30000 });
 
@@ -65,11 +66,11 @@ async function fetchVideoMeta(id, metaDir) {
   const metaFile = path.join(metaDir, `${cacheKey}.json`);
 
   if (fs.existsSync(metaFile)) {
-    console.log('Using cached video meta for:', id);
+    logger.debug('Using cached video meta for:', id);
     return JSON.parse(fs.readFileSync(metaFile, 'utf-8'));
   }
 
-  console.log('Fetching video meta for:', id);
+  logger.info('Fetching video meta for:', id);
   const meta = id.toUpperCase().startsWith('BV')
     ? await fetchVideoMetaByBvid(id)
     : await fetchVideoMetaByEpid(String(id).replace(/^ep/i, ''));
@@ -99,7 +100,7 @@ async function fetchDanmuXml(cid) {
 async function fetchDanmuSeg({ cid, aid, segmentIndex }) {
   const url = 'https://api.bilibili.com/x/v2/dm/web/seg.so';
   const params = { type: 1, pid: aid, oid: cid, segment_index: segmentIndex };
-  console.log(`[seg.so] 请求分段 ${segmentIndex}: cid=${cid} aid=${aid}`);
+  logger.debug(`[seg.so] 请求分段 ${segmentIndex}: cid=${cid} aid=${aid}`);
   try {
     const res = await axios.get(url, {
       params,
@@ -107,13 +108,13 @@ async function fetchDanmuSeg({ cid, aid, segmentIndex }) {
       headers: getRequestHeaders(),
       timeout: 10000
     });
-    console.log(`[seg.so] 分段 ${segmentIndex} 响应: status=${res.status} size=${res.data.length}`);
+    logger.debug(`[seg.so] 分段 ${segmentIndex} 响应: status=${res.status} size=${res.data.length}`);
     return Buffer.from(res.data);
   } catch (err) {
     const detail = err.response
       ? `status=${err.response.status} body=${Buffer.from(err.response.data || '').toString('utf-8').slice(0, 200)}`
       : err.message;
-    console.log(`[seg.so] 分段 ${segmentIndex} 请求失败: ${detail}`);
+    logger.warn(`[seg.so] 分段 ${segmentIndex} 请求失败: ${detail}`);
     throw err;
   }
 }
@@ -130,7 +131,7 @@ async function fetchBiliCoverByEpid(epid) {
     const current = episodes.find(ep => String(ep.id) === String(epid));
     return current?.cover || null;
   } catch (err) {
-    console.error('EP封面获取失败:', epid, err.message);
+    logger.warn('EP封面获取失败:', epid, err.message);
     return null;
   }
 }
@@ -147,7 +148,7 @@ async function fetchBiliCoverByBvid(bvid) {
     if (!pic) return null;
     return pic.replace('http://', 'https://') + '@672w_378h_1c.jpg';
   } catch (err) {
-    console.error('BV封面获取失败:', bvid, err.message);
+    logger.warn('BV封面获取失败:', bvid, err.message);
     return null;
   }
 }

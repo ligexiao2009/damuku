@@ -1,5 +1,6 @@
 const protobuf = require('protobufjs');
 const { XMLParser } = require('fast-xml-parser');
+const logger = require('../utils/logger');
 
 const DM_PROTO = `
 syntax = "proto3";
@@ -65,13 +66,13 @@ function parseDanmuSeg(buffer) {
 function tryParseDanmuSeg(buffer, segmentIndex) {
   const str = Buffer.from(buffer).toString('utf-8', 0, Math.min(buffer.length, 200));
   if (str.startsWith('{')) {
-    console.log(`[seg.so] 分段 ${segmentIndex} B站返回了JSON错误:`, str);
+    logger.warn(`[seg.so] 分段 ${segmentIndex} B站返回了JSON错误:`, str);
     return [];
   }
   try {
     return parseDanmuSeg(buffer);
   } catch (err) {
-    console.log(`[seg.so] 分段 ${segmentIndex} protobuf 解析失败:`, err.message, `| 前200字节:`, str);
+    logger.warn(`[seg.so] 分段 ${segmentIndex} protobuf 解析失败:`, err.message, `| 前200字节:`, str);
     return [];
   }
 }

@@ -15,6 +15,7 @@ const { fetchMangoDanmaku } = require('./services/mango');
 const { fetchZhibo8Danmaku } = require('./services/zhibo8');
 const { fetchTxspDanmaku } = require('./services/txsp');
 const { streamDirect, transcodeStream, generateLocalThumb } = require('./services/ffmpeg');
+const logger = require('./utils/logger');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -40,7 +41,7 @@ function backupCache(filePath) {
   const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
   const bak = `${filePath}.bak.${ts}`;
   fs.copyFileSync(filePath, bak);
-  console.log(`📦 备份旧缓存: ${path.basename(bak)}`);
+  logger.info(`📦 备份旧缓存: ${path.basename(bak)}`);
 }
 
 
@@ -61,7 +62,7 @@ if (fs.existsSync(CONVERT_HISTORY_FILE)) {
     }
     if (changed) {
       fs.writeFileSync(CONVERT_HISTORY_FILE, JSON.stringify(history, null, 2));
-      console.log('[convert] 标记了中断的转换任务');
+      logger.info('[convert] 标记了中断的转换任务');
     }
   } catch {}
 }
@@ -115,7 +116,7 @@ function saveConvertHistory(task) {
     if (history.length > 50) history.length = 50;
     fs.writeFileSync(CONVERT_HISTORY_FILE, JSON.stringify(history, null, 2));
   } catch (err) {
-    console.error('保存转换历史失败:', err.message);
+    logger.error('保存转换历史失败:', err.message);
   }
 }
 
@@ -196,7 +197,7 @@ app.get('/api/danmu', async (req, res) => {
     if (!forceRefresh && fs.existsSync(cacheFile)) {
       return res.json(success({ ...JSON.parse(fs.readFileSync(cacheFile, 'utf-8')), fromCache: true }));
     }
-    console.log('Fetching danmu for ID:', id, 'Strategy:', requestedStrategy, 'Force Refresh:', forceRefresh);
+    logger.info('Fetching danmu for ID:', id, 'Strategy:', requestedStrategy, 'Force Refresh:', forceRefresh);
     const videoMeta = await fetchVideoMeta(id, META_DIR);
 
     let danmus = [];
@@ -204,8 +205,8 @@ app.get('/api/danmu', async (req, res) => {
 
     if (requestedStrategy === 'seg.so') {
       const segmentCount = Math.min(100, Math.max(1, Math.ceil((videoMeta.duration || 0) / 360)));
-      console.log(`[seg.so] 开始加载弹幕，共 ${segmentCount} 个分段...`);
-      console.time('[seg.so] 耗时');
+      logger.info(`[seg.so] 开始加载弹幕，共 ${segmentCount} 个分段...`);
+      logger.timeDebug('[seg.so] 耗时');
 
       danmuProgressMap.set(cacheKey, { current: 0, total: segmentCount, phase: 'loading' });
 
@@ -240,7 +241,7 @@ app.get('/api/danmu', async (req, res) => {
 
       if (retryIndices.length) {
         danmuProgressMap.set(cacheKey, { current: 0, total: retryIndices.length, phase: 'retrying' });
-        console.log(`[seg.so] ${retryIndices.length} 个分段失败，等待5秒后重试...`);
+        logger.warn(`[seg.so] ${retryIndices.length} 个分段失败，等待5秒后重试...`);
         await new Promise(resolve => setTimeout(resolve, 5000));
         for (const idx of retryIndices) {
           try {
@@ -248,13 +249,13 @@ app.get('/api/danmu', async (req, res) => {
             const parsed = tryParseDanmuSeg(buf, idx);
             if (parsed.length) {
               danmus.push(...parsed);
-              console.log(`[seg.so] 分段 ${idx} 重试成功，${parsed.length} 条`);
+              logger.debug(`[seg.so] 分段 ${idx} 重试成功，${parsed.length} 条`);
             } else {
-              console.log(`[seg.so] 分段 ${idx} 重试仍然失败，已放弃`);
+              logger.warn(`[seg.so] 分段 ${idx} 重试仍然失败，已放弃`);
             }
           } catch (err) {
             const retryDetail = err.response ? ` status=${err.response.status} body=${Buffer.from(err.response.data || '').toString('utf-8').slice(0, 200)}` : '';
-            console.log(`[seg.so] 分段 ${idx} 重试异常: ${err.message}${retryDetail}`);
+            logger.warn(`[seg.so] 分段 ${idx} 重试异常: ${err.message}${retryDetail}`);
           }
           danmuProgressMap.set(cacheKey, { current: retryIndices.indexOf(idx) + 1, total: retryIndices.length, phase: 'retrying' });
           if (idx < retryIndices[retryIndices.length - 1]) {
@@ -264,14 +265,14 @@ app.get('/api/danmu', async (req, res) => {
       }
 
       danmuProgressMap.delete(cacheKey);
-      console.timeEnd('[seg.so] 耗时');
-      console.log(`[seg.so] 加载完成，共 ${danmus.length} 条弹幕`);
+      logger.timeEndDebug('[seg.so] 耗时');
+      logger.info(`[seg.so] 加载完成，共 ${danmus.length} 条弹幕`);
     } else {
-      console.time('[xml] 耗时');
+      logger.timeDebug('[xml] 耗时');
       const xml = await fetchDanmuXml(videoMeta.cid);
       danmus = parseDanmu(xml);
-      console.timeEnd('[xml] 耗时');
-      console.log(`[xml] 加载完成，共 ${danmus.length} 条弹幕`);
+      logger.timeEndDebug('[xml] 耗时');
+      logger.info(`[xml] 加载完成，共 ${danmus.length} 条弹幕`);
     }
 
     const cacheFileFinal = getCacheFilePaths(cacheKey, strategy, DANMU_DIR)[0];
@@ -304,11 +305,11 @@ app.get('/api/danmaku', async (req, res) => {
         return res.json(success({ ...cached, fromCache: true }));
       }
 
-      console.log(`[tencent] 抓取弹幕 VID: ${vid} 时长: ${(durMs / 60000).toFixed(1)}分钟`);
-      console.time('[tencent] 耗时');
+      logger.info(`[tencent] 抓取弹幕 VID: ${vid} 时长: ${(durMs / 60000).toFixed(1)}分钟`);
+      logger.timeDebug('[tencent] 耗时');
       const danmus = await fetchTencentDanmaku(vid, durMs);
-      console.timeEnd('[tencent] 耗时');
-      console.log(`[tencent] 完成，共 ${danmus.length} 条`);
+      logger.timeEndDebug('[tencent] 耗时');
+      logger.info(`[tencent] 完成，共 ${danmus.length} 条`);
 
       const result = { source: 'qq', id: vid, count: danmus.length, danmus };
       backupCache(cacheFile);
@@ -327,14 +328,14 @@ app.get('/api/danmaku', async (req, res) => {
         return res.json(success({ ...JSON.parse(fs.readFileSync(cacheFile, 'utf-8')), fromCache: true }));
       }
 
-      console.log('Fetching danmu for ID:', id, 'Strategy:', requestedStrategy);
+      logger.info('Fetching danmu for ID:', id, 'Strategy:', requestedStrategy);
       const videoMeta = await fetchVideoMeta(id, META_DIR);
       let danmus = [];
 
       if (requestedStrategy === 'seg.so') {
         const segmentCount = Math.min(100, Math.max(1, Math.ceil((videoMeta.duration || 0) / 360)));
-        console.log(`[seg.so] 开始加载，共 ${segmentCount} 分段...`);
-        console.time('[seg.so] 耗时');
+        logger.info(`[seg.so] 开始加载，共 ${segmentCount} 分段...`);
+        logger.timeDebug('[seg.so] 耗时');
 
         danmuProgressMap.set(cacheKey, { current: 0, total: segmentCount, phase: 'loading' });
 
@@ -364,7 +365,7 @@ app.get('/api/danmaku', async (req, res) => {
 
         if (retryIndices.length) {
           danmuProgressMap.set(cacheKey, { current: 0, total: retryIndices.length, phase: 'retrying' });
-          console.log(`[seg.so] ${retryIndices.length} 分段失败，5秒后重试...`);
+          logger.warn(`[seg.so] ${retryIndices.length} 分段失败，5秒后重试...`);
           await new Promise(r => setTimeout(r, 5000));
           for (const idx of retryIndices) {
             try {
@@ -378,14 +379,14 @@ app.get('/api/danmaku', async (req, res) => {
         }
 
         danmuProgressMap.delete(cacheKey);
-        console.timeEnd('[seg.so] 耗时');
-        console.log(`[seg.so] 完成，共 ${danmus.length} 条`);
+        logger.timeEndDebug('[seg.so] 耗时');
+        logger.info(`[seg.so] 完成，共 ${danmus.length} 条`);
       } else {
-        console.time('[xml] 耗时');
+        logger.timeDebug('[xml] 耗时');
         const xml = await fetchDanmuXml(videoMeta.cid);
         danmus = parseDanmu(xml);
-        console.timeEnd('[xml] 耗时');
-        console.log(`[xml] 完成，共 ${danmus.length} 条`);
+        logger.timeEndDebug('[xml] 耗时');
+        logger.info(`[xml] 完成，共 ${danmus.length} 条`);
       }
 
       const cacheFileFinal = getCacheFilePaths(cacheKey, requestedStrategy, DANMU_DIR)[0];
@@ -408,10 +409,10 @@ app.get('/api/danmaku', async (req, res) => {
         return res.json(success({ ...cached, fromCache: true }));
       }
 
-      console.log(`[mango] 抓取弹幕 videoId: ${videoId} time: ${timeStr}`);
-      console.time('[mango] 耗时');
+      logger.info(`[mango] 抓取弹幕 videoId: ${videoId} time: ${timeStr}`);
+      logger.timeDebug('[mango] 耗时');
       const danmus = await fetchMangoDanmaku(videoId, undefined, timeStr);
-      console.timeEnd('[mango] 耗时');
+      logger.timeEndDebug('[mango] 耗时');
 
       const result = { source: 'mango', id: videoId, count: danmus.length, danmus };
       backupCache(cacheFile);
@@ -424,7 +425,7 @@ app.get('/api/danmaku', async (req, res) => {
       const matchId = (id || '');
       const type = req.query.type || 'zuqiu';
       const lastMaxId = Number(req.query.lastMaxId) || 0;
-      console.log(`[zhibo8] 查询弹幕 matchId: ${matchId} type: ${type} lastMaxId: ${lastMaxId}`);
+      logger.debug(`[zhibo8] 查询弹幕 matchId: ${matchId} type: ${type} lastMaxId: ${lastMaxId}`);
       const { danmus, maxId } = await fetchZhibo8Danmaku(matchId, type, lastMaxId);
       return res.json(success({ source: 'zhibo8', id: matchId, count: danmus.length, danmus, maxId }));
     }
@@ -436,7 +437,7 @@ app.get('/api/danmaku', async (req, res) => {
       const lastSeq = Number(req.query.lastSeq) || 0;
       const cursor = req.query.cursor || '';
       if (!roomId || !programId) return res.status(400).json(fail(400, '缺少 roomId 或 programId'));
-      console.log(`[txsp] 查询弹幕 roomId: ${roomId} programId: ${programId} lastSeq: ${lastSeq}`);
+      logger.debug(`[txsp] 查询弹幕 roomId: ${roomId} programId: ${programId} lastSeq: ${lastSeq}`);
       const txspCookie = req.query.txspCookie || '';
       const { danmus, maxSeq, cursor: nextCursor, pullInterval } = await fetchTxspDanmaku(roomId, programId, lastSeq, cursor, txspCookie);
       return res.json(success({ source: 'txsp', id: `${roomId}_${programId}`, count: danmus.length, danmus, maxSeq, cursor: nextCursor, pullInterval }));
@@ -444,7 +445,7 @@ app.get('/api/danmaku', async (req, res) => {
 
     return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango, zhibo8, txsp'));
   } catch (err) {
-    console.error(`[${req.query.source}] 弹幕请求失败:`, err.message);
+    logger.error(`[${req.query.source}] 弹幕请求失败:`, err.message);
     const { id, source } = req.query;
     if (source === 'bili') {
       const ck = (id || '').toUpperCase().startsWith('BV') ? id : `ep${String(id || '').replace(/^ep/i, '')}`;
@@ -508,14 +509,14 @@ app.put('/api/folder-history', (req, res) => {
 
 app.get('/api/videos', (req, res) => {
   try {
-    console.log('VIDEO_DIR:', VIDEO_DIR);
+    logger.debug('VIDEO_DIR:', VIDEO_DIR);
     const files = scanVideos(VIDEO_DIR);
     files.sort((a, b) =>
       a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
     );
     res.json(success(files));
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).json(fail(500, '无法读取文件列表'));
   }
 });
@@ -534,10 +535,10 @@ app.put('/api/config', (req, res) => {
       return res.status(400).json(fail(400, `路径不是目录: ${resolved}`));
     }
     VIDEO_DIR = resolved;
-    console.log('VIDEO_DIR updated to:', VIDEO_DIR);
+    logger.info('VIDEO_DIR updated to:', VIDEO_DIR);
     res.json(success({ videoDir: VIDEO_DIR }));
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).json(fail(500, '更新配置失败'));
   }
 });
@@ -550,7 +551,7 @@ app.get('/api/folders', (req, res) => {
       .concat(allFolders.filter(f => hasDirectVideoFiles(f.path)));
     res.json(success(folders));
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).json(fail(500, '读取文件夹列表失败'));
   }
 });
@@ -584,7 +585,7 @@ app.get('/api/video-files', (req, res) => {
     files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
     res.json(success(files));
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).json(fail(500, '读取文件列表失败'));
   }
 });
@@ -608,7 +609,7 @@ app.get('/api/thumbnail', async (req, res) => {
     if (videoId) {
       try {
         const coverUrl = await fetchBiliCover(videoId);
-        console.log('尝试获取B站封面，视频ID:', videoId, '封面URL:', coverUrl);
+        logger.debug('尝试获取B站封面，视频ID:', videoId, '封面URL:', coverUrl);
         if (coverUrl) {
           await downloadImage(coverUrl, thumbPath);
           if (fs.existsSync(thumbPath)) {
@@ -616,7 +617,7 @@ app.get('/api/thumbnail', async (req, res) => {
           }
         }
       } catch (e) {
-        console.log('B站封面获取失败，回退本地截图');
+        logger.debug('B站封面获取失败，回退本地截图');
       }
     }
 
@@ -628,7 +629,7 @@ app.get('/api/thumbnail', async (req, res) => {
 
     res.sendFile(thumbPath);
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).send('缩略图失败');
   }
 });
@@ -644,7 +645,7 @@ app.get('/video/:name', (req, res) => {
 
     streamDirect(videoPath, req, res);
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(400).send('非法请求');
   }
 });
@@ -656,7 +657,7 @@ app.get('/stream', (req, res) => {
     if (!fileName) return res.status(400).send('缺少文件名');
 
     const videoPath = resolveVideoPath(fileName, VIDEO_DIR);
-    console.log('Streaming video:', videoPath);
+    logger.debug('Streaming video:', videoPath);
 
     if (!fs.existsSync(videoPath)) {
       return res.status(404).send('文件不存在');
@@ -670,7 +671,7 @@ app.get('/stream', (req, res) => {
 
     return transcodeStream(videoPath, req, res);
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(400).send('非法请求');
   }
 });
@@ -689,7 +690,7 @@ app.post('/api/progress', (req, res) => {
     updatedAt: Date.now()
   }, null, 2));
 
-  console.log(`💾 [progress] 保存: ${id} → ${saveTime}s`);
+  logger.debug(`💾 [progress] 保存: ${id} → ${saveTime}s`);
   res.json(success(null));
 });
 
@@ -806,7 +807,7 @@ app.post('/api/rename', async (req, res) => {
       renamedFiles
     }));
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).json(fail(500, err.message || '重命名失败'));
   }
 });
@@ -868,7 +869,7 @@ app.post('/api/convert', (req, res) => {
         task.output
       ];
 
-      console.log(`[convert] 开始转换: ${task.input} -> ${task.output}`);
+      logger.info(`[convert] 开始转换: ${task.input} -> ${task.output}`);
 
       const ffmpeg = spawn('ffmpeg', args);
 
@@ -891,11 +892,11 @@ app.post('/api/convert', (req, res) => {
         task.endTime = Date.now();
         if (code === 0) {
           task.status = 'done';
-          console.log(`[convert] 完成: ${task.output}`);
+          logger.info(`[convert] 完成: ${task.output}`);
         } else {
           task.status = 'error';
           task.error = stderr.slice(-500);
-          console.error(`[convert] 失败: ${stderr.slice(-300)}`);
+          logger.error(`[convert] 失败: ${stderr.slice(-300)}`);
         }
         saveConvertHistory(task);
       });
@@ -905,13 +906,13 @@ app.post('/api/convert', (req, res) => {
         task.error = err.message;
         task.endTime = Date.now();
         saveConvertHistory(task);
-        console.error(`[convert] ffmpeg 启动失败:`, err.message);
+        logger.error(`[convert] ffmpeg 启动失败:`, err.message);
       });
     }
 
     res.json(success({ taskId, output: outputPath, duration: task.duration }));
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).json(fail(500, err.message || '转换失败'));
   }
 });
@@ -991,7 +992,7 @@ app.get('/api/manage/videos', (req, res) => {
     files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
     res.json(success(files));
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).json(fail(500, '读取视频列表失败'));
   }
 });
@@ -1013,10 +1014,10 @@ app.delete('/api/manage/video', (req, res) => {
       return res.status(400).json(fail(400, '只能删除文件'));
     }
     fs.unlinkSync(resolved);
-    console.log(`🗑️  [manage] 删除视频: ${resolved}`);
+    logger.info(`🗑️  [manage] 删除视频: ${resolved}`);
     res.json(success(null, '删除成功'));
   } catch (err) {
-    console.error(err);
+    logger.error(err);
     res.status(500).json(fail(500, err.message));
   }
 });
@@ -1105,7 +1106,7 @@ function cleanupVideos() {
           if (now > cutoff) {
             fs.unlinkSync(filePath);
             totalDeleted++;
-            console.log(`🗑️  [auto-cleanup] 删除过期视频: ${filePath}`);
+            logger.info(`🗑️  [auto-cleanup] 删除过期视频: ${filePath}`);
           }
         } catch {}
       }
@@ -1125,7 +1126,7 @@ function cleanupVideos() {
         if (now > cutoff) {
           fs.unlinkSync(filePath);
           totalDeleted++;
-          console.log(`🗑️  [auto-cleanup] 删除过期视频(单独): ${filePath}`);
+          logger.info(`🗑️  [auto-cleanup] 删除过期视频(单独): ${filePath}`);
         }
       } catch {}
     }
@@ -1137,7 +1138,7 @@ function cleanupVideos() {
       if (!fs.existsSync(filePath)) {
         delete config.files[filePath];
         configChanged = true;
-        console.log(`🧹 [auto-cleanup] 移除无效规则(文件已删): ${filePath}`);
+        logger.info(`🧹 [auto-cleanup] 移除无效规则(文件已删): ${filePath}`);
       }
     }
     const cleanFolders = config.folders || {};
@@ -1145,16 +1146,16 @@ function cleanupVideos() {
       if (!fs.existsSync(folderPath)) {
         delete config.folders[folderPath];
         configChanged = true;
-        console.log(`🧹 [auto-cleanup] 移除无效规则(目录已删): ${folderPath}`);
+        logger.info(`🧹 [auto-cleanup] 移除无效规则(目录已删): ${folderPath}`);
       }
     }
     if (configChanged) {
       fs.writeFileSync(RETENTION_CONFIG_FILE, JSON.stringify(config, null, 2));
     }
 
-    if (totalDeleted > 0) console.log(`🗑️  [auto-cleanup] 本轮共清理 ${totalDeleted} 个过期视频`);
+    if (totalDeleted > 0) logger.info(`🗑️  [auto-cleanup] 本轮共清理 ${totalDeleted} 个过期视频`);
   } catch (err) {
-    console.error('[auto-cleanup] 清理出错:', err.message);
+    logger.error('[auto-cleanup] 清理出错:', err.message);
   }
 }
 cleanupVideos();
@@ -1176,14 +1177,14 @@ function cleanupPlayback() {
       }
     } catch {}
   });
-  if (count > 0) console.log(`🗑️  自动清理 ${count} 个过期播放记录`);
+  if (count > 0) logger.info(`🗑️  自动清理 ${count} 个过期播放记录`);
 }
 cleanupPlayback();
 setInterval(cleanupPlayback, 3600000); // 每小时检查一次
 
 const localIP = getLocalIP();
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('服务器已在局域网启动！');
-  console.log(`本机请访问: http://localhost:${PORT}/video.html`);
-  console.log(`iPad访问: http://${localIP}:${PORT}/video.html`);
+  logger.info('服务器已在局域网启动！');
+  logger.info(`本机请访问: http://localhost:${PORT}/video.html`);
+  logger.info(`iPad访问: http://${localIP}:${PORT}/video.html`);
 });

@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 const API_URL = 'https://zbpbaccess.video.qq.com/trpc.live_main_logic.live_danmu_read.LiveDanmuRead/PullMsgH5?vappid=34382579&vsecret=e496b057758aeb04b3a2d623c952a1c47e04ffb0a01e19cf';
 
@@ -9,7 +10,7 @@ function safeGet(obj, path, fallback = null) {
 }
 
 async function fetchTxspDanmaku(roomId, programId, lastSeq = 0, cursor = '', reqCookie = '') {
-  console.log(`📡 [txsp] 请求 roomId=${roomId} programId=${programId} lastSeq=${lastSeq}`);
+  logger.debug(`📡 [txsp] 请求 roomId=${roomId} programId=${programId} lastSeq=${lastSeq}`);
 
   const res = await axios.post(API_URL, {
     room_id: Number(roomId),
@@ -27,7 +28,7 @@ async function fetchTxspDanmaku(roomId, programId, lastSeq = 0, cursor = '', req
 
   const root = res.data?.data?.data;
   if (!root) {
-    console.log(`⚠️ [txsp] 接口返回异常:`, JSON.stringify(res.data).slice(0, 200));
+    logger.warn(`⚠️ [txsp] 接口返回异常:`, JSON.stringify(res.data).slice(0, 200));
     return { danmus: [], maxSeq: lastSeq, cursor, pullInterval: 5000 };
   }
 
@@ -66,7 +67,7 @@ async function fetchTxspDanmaku(roomId, programId, lastSeq = 0, cursor = '', req
     if (seq > maxSeq) maxSeq = seq;
   }
 
-  console.log(`💬 [txsp] 新增 ${newItems.length} 条弹幕 (maxSeq=${maxSeq})`);
+  logger.debug(`💬 [txsp] 新增 ${newItems.length} 条弹幕 (maxSeq=${maxSeq})`);
   return { danmus: newItems, maxSeq, cursor: nextCursor, pullInterval };
 }
 
