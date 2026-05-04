@@ -6,7 +6,18 @@ const { spawn } = require('child_process');
 require('dotenv').config();
 
 const { success, fail } = require('./utils/response');
-const { decodeSafe, resolveVideoPath, isVideoExt, scanVideos, getCacheFilePaths, getThumbPath } = require('./utils/file');
+const {
+  decodeSafe,
+  isPathInside,
+  resolvePathInside,
+  resolveDirectoryInside,
+  resolveFileInside,
+  resolveExistingVideoPath,
+  isVideoExt,
+  scanVideos,
+  getCacheFilePaths,
+  getThumbPath
+} = require('./utils/file');
 const { detectVideoIdFromName, sanitizeFileName, extractEpisodeNumberFromFileName, extractEpId } = require('./utils/video');
 const { fetchVideoMeta, fetchSeasonInfo, fetchDanmuXml, fetchDanmuSeg, fetchBiliCover, downloadImage } = require('./services/bilibili');
 const { parseDanmu, tryParseDanmuSeg } = require('./services/danmu');
@@ -121,6 +132,24 @@ function saveConvertHistory(task) {
 }
 
 const FOLDERS_BASE = process.env.FOLDERS_BASE || path.join(os.homedir(), 'video');
+
+function resolveLibraryDirectory(targetPath) {
+  return resolveDirectoryInside(targetPath, FOLDERS_BASE);
+}
+
+function resolveLibraryFile(targetPath) {
+  return resolveFileInside(targetPath, FOLDERS_BASE);
+}
+
+function resolveLibraryVideoFile(targetPath) {
+  const resolved = resolveLibraryFile(targetPath);
+  if (!isVideoExt(resolved)) throw new Error('不支持的视频格式');
+  return resolved;
+}
+
+function isPathValidationError(err) {
+  return /^(缺少|非法|目录不存在|文件不存在|路径不是|不支持的视频格式)/.test(err?.message || '');
+}
 
 /** 递归扫描目录下所有子文件夹，返回 { path, name } 数组。 */
 function scanFolders(baseDir, relativePath = '') {
@@ -495,15 +524,16 @@ app.put('/api/folder-history', (req, res) => {
   try {
     const { dir, name } = req.body;
     if (!dir || name == null) return res.status(400).json(fail(400, '缺少参数'));
+    const safeDir = resolveLibraryDirectory(dir);
     let history = {};
     if (fs.existsSync(FOLDER_HISTORY_FILE)) {
       history = JSON.parse(fs.readFileSync(FOLDER_HISTORY_FILE, 'utf-8'));
     }
-    history[dir] = name;
+    history[safeDir] = name;
     fs.writeFileSync(FOLDER_HISTORY_FILE, JSON.stringify(history, null, 2));
     res.json(success(null));
   } catch (err) {
-    res.status(500).json(fail(500, err.message));
+    res.status(400).json(fail(400, err.message));
   }
 });
 
@@ -527,19 +557,14 @@ app.put('/api/config', (req, res) => {
     if (!videoDir || typeof videoDir !== 'string') {
       return res.status(400).json(fail(400, '缺少 videoDir 参数'));
     }
-    const resolved = path.resolve(videoDir);
-    if (!fs.existsSync(resolved)) {
-      return res.status(400).json(fail(400, `目录不存在: ${resolved}`));
-    }
-    if (!fs.statSync(resolved).isDirectory()) {
-      return res.status(400).json(fail(400, `路径不是目录: ${resolved}`));
-    }
+    const resolved = resolveLibraryDirectory(videoDir);
     VIDEO_DIR = resolved;
     logger.info('VIDEO_DIR updated to:', VIDEO_DIR);
     res.json(success({ videoDir: VIDEO_DIR }));
   } catch (err) {
-    logger.error(err);
-    res.status(500).json(fail(500, '更新配置失败'));
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, status === 400 ? err.message : '更新配置失败'));
   }
 });
 
@@ -562,10 +587,7 @@ app.get('/api/video-files', (req, res) => {
     let base = FOLDERS_BASE;
     let files;
     if (folder) {
-      const resolved = path.resolve(folder);
-      if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
-        return res.status(400).json(fail(400, '非法目录路径'));
-      }
+      const resolved = resolveLibraryDirectory(folder);
       base = resolved;
       // Only scan direct children, not recursive
       files = [];
@@ -585,8 +607,9 @@ app.get('/api/video-files', (req, res) => {
     files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
     res.json(success(files));
   } catch (err) {
-    logger.error(err);
-    res.status(500).json(fail(500, '读取文件列表失败'));
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, status === 400 ? err.message : '读取文件列表失败'));
   }
 });
 
@@ -596,7 +619,7 @@ app.get('/api/thumbnail', async (req, res) => {
     if (!fileName) return res.status(400).send('缺少文件名');
 
     const safeName = decodeSafe(fileName);
-    const videoPath = path.join(VIDEO_DIR, safeName);
+    const videoPath = resolveExistingVideoPath(safeName, VIDEO_DIR);
 
     const thumbPath = getThumbPath(safeName, THUMB_DIR);
 
@@ -629,23 +652,20 @@ app.get('/api/thumbnail', async (req, res) => {
 
     res.sendFile(thumbPath);
   } catch (err) {
-    logger.error(err);
-    res.status(500).send('缩略图失败');
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).send(status === 400 ? err.message : '缩略图失败');
   }
 });
 
 app.get('/video/:name', (req, res) => {
   try {
     const fileName = decodeSafe(req.params.name);
-    const videoPath = resolveVideoPath(fileName, VIDEO_DIR);
-
-    if (!fs.existsSync(videoPath)) {
-      return res.status(404).send('视频文件不存在');
-    }
+    const videoPath = resolveExistingVideoPath(fileName, VIDEO_DIR);
 
     streamDirect(videoPath, req, res);
   } catch (err) {
-    logger.error(err);
+    if (!isPathValidationError(err)) logger.error(err);
     res.status(400).send('非法请求');
   }
 });
@@ -656,12 +676,8 @@ app.get('/stream', (req, res) => {
     const fileName = decodeSafe(String(req.query.name || ''));
     if (!fileName) return res.status(400).send('缺少文件名');
 
-    const videoPath = resolveVideoPath(fileName, VIDEO_DIR);
+    const videoPath = resolveExistingVideoPath(fileName, VIDEO_DIR);
     logger.debug('Streaming video:', videoPath);
-
-    if (!fs.existsSync(videoPath)) {
-      return res.status(404).send('文件不存在');
-    }
 
     const ext = path.extname(videoPath).toLowerCase();
     const directPlayable = new Set(['.mp4', '.mov', '.webm', '.m4v']);
@@ -671,7 +687,7 @@ app.get('/stream', (req, res) => {
 
     return transcodeStream(videoPath, req, res);
   } catch (err) {
-    logger.error(err);
+    if (!isPathValidationError(err)) logger.error(err);
     res.status(400).send('非法请求');
   }
 });
@@ -737,9 +753,7 @@ app.post('/api/rename', async (req, res) => {
       return res.status(400).json(fail(400, '缺少文件夹路径或B站链接'));
     }
 
-    if (!fs.existsSync(folderPath)) {
-      return res.status(400).json(fail(400, '文件夹不存在'));
-    }
+    const safeFolderPath = resolveLibraryDirectory(folderPath);
 
     const epId = extractEpId(biliUrl);
     if (!epId) {
@@ -752,7 +766,7 @@ app.post('/api/rename', async (req, res) => {
       return Number(a?.title || 0) - Number(b?.title || 0);
     });
 
-    const videoFiles = fs.readdirSync(folderPath)
+    const videoFiles = fs.readdirSync(safeFolderPath)
       .filter(file => /\.(mp4|mkv|avi|mov|m4v|webm)$/i.test(file))
       .sort();
 
@@ -784,8 +798,8 @@ app.post('/api/rename', async (req, res) => {
 
       const newName = `EP${episodeNumber}_${seasonTitle}_ep${ep.id}${ext}`;
 
-      const oldPath = path.join(folderPath, file);
-      const newPath = path.join(folderPath, newName);
+      const oldPath = path.join(safeFolderPath, file);
+      const newPath = path.join(safeFolderPath, newName);
 
       fs.renameSync(oldPath, newPath);
       usedEpisodeIds.add(ep.id);
@@ -798,7 +812,7 @@ app.post('/api/rename', async (req, res) => {
       });
     });
 
-    const mappingPath = path.join(folderPath, 'mapping.json');
+    const mappingPath = path.join(safeFolderPath, 'mapping.json');
     fs.writeFileSync(mappingPath, JSON.stringify(renamedFiles, null, 2));
 
     res.json(success({
@@ -807,8 +821,9 @@ app.post('/api/rename', async (req, res) => {
       renamedFiles
     }));
   } catch (err) {
-    logger.error(err);
-    res.status(500).json(fail(500, err.message || '重命名失败'));
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, err.message || '重命名失败'));
   }
 });
 
@@ -818,10 +833,7 @@ app.post('/api/convert', (req, res) => {
     if (!filePath || typeof filePath !== 'string') {
       return res.status(400).json(fail(400, '缺少 filePath 参数'));
     }
-    const resolvedPath = path.resolve(filePath);
-    if (!fs.existsSync(resolvedPath)) {
-      return res.status(400).json(fail(400, `文件不存在: ${resolvedPath}`));
-    }
+    const resolvedPath = resolveLibraryVideoFile(filePath);
 
     const dir = path.dirname(resolvedPath);
     const ext = path.extname(resolvedPath);
@@ -912,8 +924,9 @@ app.post('/api/convert', (req, res) => {
 
     res.json(success({ taskId, output: outputPath, duration: task.duration }));
   } catch (err) {
-    logger.error(err);
-    res.status(500).json(fail(500, err.message || '转换失败'));
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, err.message || '转换失败'));
   }
 });
 
@@ -958,10 +971,7 @@ app.get('/api/manage/videos', (req, res) => {
     const folder = req.query.folder;
     let files;
     if (folder) {
-      const resolved = path.resolve(folder);
-      if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
-        return res.status(400).json(fail(400, '非法目录路径'));
-      }
+      const resolved = resolveLibraryDirectory(folder);
       files = [];
       let entries;
       try { entries = fs.readdirSync(resolved, { withFileTypes: true }); } catch { entries = []; }
@@ -992,8 +1002,9 @@ app.get('/api/manage/videos', (req, res) => {
     files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
     res.json(success(files));
   } catch (err) {
-    logger.error(err);
-    res.status(500).json(fail(500, '读取视频列表失败'));
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, status === 400 ? err.message : '读取视频列表失败'));
   }
 });
 
@@ -1003,22 +1014,14 @@ app.delete('/api/manage/video', (req, res) => {
     if (!filePath || typeof filePath !== 'string') {
       return res.status(400).json(fail(400, '缺少 path 参数'));
     }
-    const resolved = path.resolve(filePath);
-    if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
-      return res.status(400).json(fail(400, '非法文件路径'));
-    }
-    if (!fs.existsSync(resolved)) {
-      return res.status(404).json(fail(404, '文件不存在'));
-    }
-    if (!fs.statSync(resolved).isFile()) {
-      return res.status(400).json(fail(400, '只能删除文件'));
-    }
+    const resolved = resolveLibraryVideoFile(filePath);
     fs.unlinkSync(resolved);
     logger.info(`🗑️  [manage] 删除视频: ${resolved}`);
     res.json(success(null, '删除成功'));
   } catch (err) {
-    logger.error(err);
-    res.status(500).json(fail(500, err.message));
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, err.message));
   }
 });
 
@@ -1043,24 +1046,20 @@ app.put('/api/manage/retention', (req, res) => {
     if (typeof days !== 'number' || days < 0 || !Number.isInteger(days)) {
       return res.status(400).json(fail(400, 'days 必须是非负整数'));
     }
-    const resolved = path.resolve(targetPath);
-    if (!resolved.startsWith(path.resolve(FOLDERS_BASE) + path.sep) && resolved !== path.resolve(FOLDERS_BASE)) {
-      return res.status(400).json(fail(400, '非法路径'));
-    }
+    const isFile = type === 'file' || (filePath || filePathAlt);
+    const resolved = days === 0
+      ? resolvePathInside(targetPath, FOLDERS_BASE)
+      : (isFile ? resolveLibraryVideoFile(targetPath) : resolveLibraryDirectory(targetPath));
     let config = { folders: {}, files: {} };
     if (fs.existsSync(RETENTION_CONFIG_FILE)) {
       config = JSON.parse(fs.readFileSync(RETENTION_CONFIG_FILE, 'utf-8'));
     }
 
-    const isFile = type === 'file' || (filePath || filePathAlt);
     if (isFile) {
       if (!config.files) config.files = {};
       if (days === 0) {
         delete config.files[resolved];
       } else {
-        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-          return res.status(400).json(fail(400, '文件不存在'));
-        }
         config.files[resolved] = { days, setAt: Date.now() };
       }
     } else {
@@ -1075,7 +1074,8 @@ app.put('/api/manage/retention', (req, res) => {
     fs.writeFileSync(RETENTION_CONFIG_FILE, JSON.stringify(config, null, 2));
     res.json(success(config));
   } catch (err) {
-    res.status(500).json(fail(500, err.message));
+    const status = isPathValidationError(err) ? 400 : 500;
+    res.status(status).json(fail(status, err.message));
   }
 });
 
@@ -1086,20 +1086,37 @@ function cleanupVideos() {
     const config = JSON.parse(fs.readFileSync(RETENTION_CONFIG_FILE, 'utf-8'));
     const now = Date.now();
     let totalDeleted = 0;
+    let configChanged = false;
 
     // 逐文件夹清理
     const folders = config.folders || {};
     for (const [folderPath, rule] of Object.entries(folders)) {
+      let safeFolderPath;
+      try {
+        safeFolderPath = resolveLibraryDirectory(folderPath);
+      } catch (err) {
+        if (fs.existsSync(folderPath)) {
+          delete config.folders[folderPath];
+          configChanged = true;
+          logger.warn(`🧹 [auto-cleanup] 移除非法规则(目录): ${folderPath}`);
+        }
+        continue;
+      }
+      if (!isPathInside(safeFolderPath, FOLDERS_BASE)) {
+        delete config.folders[folderPath];
+        configChanged = true;
+        logger.warn(`🧹 [auto-cleanup] 移除越界规则(目录): ${folderPath}`);
+        continue;
+      }
       const keepDays = typeof rule === 'number' ? rule : (rule.days || 0);
       const setAt = typeof rule === 'number' ? 0 : (rule.setAt || 0);
       if (!keepDays || keepDays <= 0) continue;
-      if (!fs.existsSync(folderPath)) continue;
       const maxAge = keepDays * 86400000;
       let entries;
-      try { entries = fs.readdirSync(folderPath, { withFileTypes: true }); } catch { continue; }
+      try { entries = fs.readdirSync(safeFolderPath, { withFileTypes: true }); } catch { continue; }
       for (const entry of entries) {
         if (!entry.isFile() || !isVideoExt(entry.name)) continue;
-        const filePath = path.join(folderPath, entry.name);
+        const filePath = path.join(safeFolderPath, entry.name);
         try {
           const stat = fs.statSync(filePath);
           const cutoff = setAt > 0 ? setAt + maxAge : stat.mtimeMs + maxAge;
@@ -1115,24 +1132,39 @@ function cleanupVideos() {
     // 逐文件清理
     const files = config.files || {};
     for (const [filePath, rule] of Object.entries(files)) {
+      let safeFilePath;
+      try {
+        safeFilePath = resolveLibraryVideoFile(filePath);
+      } catch (err) {
+        if (fs.existsSync(filePath)) {
+          delete config.files[filePath];
+          configChanged = true;
+          logger.warn(`🧹 [auto-cleanup] 移除非法规则(文件): ${filePath}`);
+        }
+        continue;
+      }
+      if (!isPathInside(safeFilePath, FOLDERS_BASE)) {
+        delete config.files[filePath];
+        configChanged = true;
+        logger.warn(`🧹 [auto-cleanup] 移除越界规则(文件): ${filePath}`);
+        continue;
+      }
       const keepDays = typeof rule === 'number' ? rule : (rule.days || 0);
       const setAt = typeof rule === 'number' ? 0 : (rule.setAt || 0);
       if (!keepDays || keepDays <= 0) continue;
-      if (!fs.existsSync(filePath)) continue;
       const maxAge = keepDays * 86400000;
       try {
-        const stat = fs.statSync(filePath);
+        const stat = fs.statSync(safeFilePath);
         const cutoff = setAt > 0 ? setAt + maxAge : stat.mtimeMs + maxAge;
         if (now > cutoff) {
-          fs.unlinkSync(filePath);
+          fs.unlinkSync(safeFilePath);
           totalDeleted++;
-          logger.info(`🗑️  [auto-cleanup] 删除过期视频(单独): ${filePath}`);
+          logger.info(`🗑️  [auto-cleanup] 删除过期视频(单独): ${safeFilePath}`);
         }
       } catch {}
     }
 
     // 清理无效规则（文件/目录已不存在）
-    let configChanged = false;
     const cleanFiles = config.files || {};
     for (const filePath of Object.keys(cleanFiles)) {
       if (!fs.existsSync(filePath)) {

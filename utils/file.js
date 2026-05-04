@@ -28,6 +28,48 @@ function normalizeRelativePath(relativePath) {
   return normalized;
 }
 
+/** 判断 candidate 是否位于 baseDir 内，允许等于 baseDir。 */
+function isPathInside(candidate, baseDir) {
+  const resolvedCandidate = path.resolve(candidate);
+  const resolvedBase = path.resolve(baseDir);
+  const relative = path.relative(resolvedBase, resolvedCandidate);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+/** 将路径解析到允许根目录内，防止目录穿越和越权绝对路径。 */
+function resolvePathInside(targetPath, baseDir) {
+  if (!targetPath || typeof targetPath !== 'string') {
+    throw new Error('缺少路径');
+  }
+  const resolved = path.resolve(targetPath);
+  if (!isPathInside(resolved, baseDir)) {
+    throw new Error('非法路径');
+  }
+  return resolved;
+}
+
+/** 解析允许根目录内的已存在目录。 */
+function resolveDirectoryInside(targetPath, baseDir) {
+  const resolved = resolvePathInside(targetPath, baseDir);
+  if (!fs.existsSync(resolved)) throw new Error(`目录不存在: ${resolved}`);
+  if (!fs.statSync(resolved).isDirectory()) throw new Error(`路径不是目录: ${resolved}`);
+  if (!isPathInside(fs.realpathSync(resolved), fs.realpathSync(baseDir))) {
+    throw new Error('非法路径');
+  }
+  return resolved;
+}
+
+/** 解析允许根目录内的已存在文件。 */
+function resolveFileInside(targetPath, baseDir) {
+  const resolved = resolvePathInside(targetPath, baseDir);
+  if (!fs.existsSync(resolved)) throw new Error(`文件不存在: ${resolved}`);
+  if (!fs.statSync(resolved).isFile()) throw new Error(`路径不是文件: ${resolved}`);
+  if (!isPathInside(fs.realpathSync(resolved), fs.realpathSync(baseDir))) {
+    throw new Error('非法路径');
+  }
+  return resolved;
+}
+
 /**
  * 将相对文件名解析为视频目录下的绝对路径，防止目录穿越攻击。
  * @param {string} relativeName
@@ -37,11 +79,16 @@ function normalizeRelativePath(relativePath) {
 function resolveVideoPath(relativeName, videoDir) {
   const normalized = normalizeRelativePath(relativeName);
   const fullPath = path.resolve(videoDir, normalized);
-  const basePath = path.resolve(videoDir);
+  if (!isPathInside(fullPath, videoDir)) throw new Error('非法路径');
+  return fullPath;
+}
 
-  if (fullPath !== basePath && !fullPath.startsWith(basePath + path.sep)) {
-    throw new Error('非法路径');
-  }
+/** 将相对视频文件名解析为视频目录下已存在的视频文件。 */
+function resolveExistingVideoPath(relativeName, videoDir) {
+  const fullPath = resolveVideoPath(relativeName, videoDir);
+  if (!fs.existsSync(fullPath)) throw new Error('视频文件不存在');
+  if (!fs.statSync(fullPath).isFile()) throw new Error('路径不是文件');
+  if (!isVideoExt(fullPath)) throw new Error('不支持的视频格式');
   return fullPath;
 }
 
@@ -94,8 +141,13 @@ function getThumbPath(fileName, thumbDir) {
 
 module.exports = {
   decodeSafe,
+  isPathInside,
   normalizeRelativePath,
+  resolvePathInside,
+  resolveDirectoryInside,
+  resolveFileInside,
   resolveVideoPath,
+  resolveExistingVideoPath,
   isVideoExt,
   scanVideos,
   getCacheFilePaths,
