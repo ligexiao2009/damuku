@@ -7,16 +7,17 @@
   <title>B站弹幕播放器</title>
   <style>
     :root {
-      --bg: #0c1017;
-      --panel: rgba(12, 18, 28, 0.82);
-      --panel-border: rgba(255, 255, 255, 0.08);
-      --panel-soft: rgba(255, 255, 255, 0.06);
+      --bg: #080c12;
+      --panel: rgba(8, 12, 18, 0.88);
+      --panel-border: rgba(255, 255, 255, 0.06);
+      --panel-soft: rgba(255, 255, 255, 0.045);
       --text: #f6f7fb;
-      --muted: #a8b0c2;
+      --muted: #929bac;
       --accent: #ff6b8a;
       --accent-strong: #ff4d73;
-      --accent-soft: rgba(255, 107, 138, 0.16);
-      --shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+      --accent-soft: rgba(255, 107, 138, 0.12);
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+      --player-shadow: 0 22px 56px rgba(0, 0, 0, 0.62);
       --radius: 20px;
     }
 
@@ -27,10 +28,11 @@
     body {
       margin: 0;
       min-height: 100vh;
+      overflow-x: hidden;
       background:
-        radial-gradient(circle at top left, rgba(255, 107, 138, 0.18), transparent 28%),
-        radial-gradient(circle at top right, rgba(67, 181, 255, 0.16), transparent 24%),
-        linear-gradient(180deg, #0c1017 0%, #141d29 100%);
+        radial-gradient(circle at top left, rgba(255, 107, 138, 0.08), transparent 26%),
+        radial-gradient(circle at top right, rgba(67, 181, 255, 0.06), transparent 24%),
+        linear-gradient(180deg, #080c12 0%, #0b1119 58%, #101720 100%);
       color: var(--text);
       font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
       padding: 20px 16px 24px;
@@ -54,8 +56,8 @@
       border-radius: 12px;
       background: var(--panel);
       border: 1px solid var(--panel-border);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(14px);
     }
 
     .status-bar.hidden {
@@ -81,36 +83,68 @@
     }
 
     .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      padding: 8px;
+      position: relative;
+      z-index: 50;
+      display: grid;
+      grid-template-columns: minmax(280px, 1.1fr) minmax(320px, 1.4fr) auto;
+      gap: 8px;
+      padding: 10px;
       border-radius: 14px;
       background: var(--panel);
       border: 1px solid var(--panel-border);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(14px);
+      align-items: start;
+    }
+
+    .control-group {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 6px;
       align-items: stretch;
+      min-width: 0;
+      padding: 8px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.045);
     }
 
-    .controls>* {
-      flex: 1 1 auto;
+    .control-group-title {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0;
+      white-space: nowrap;
     }
 
-    #videoFile {
-      flex: 1 1 160px;
+    .control-group-source {
+      grid-template-columns: minmax(0, 1fr) auto;
     }
 
-    #bvidInput {
-      flex: 1 1 140px;
+    .control-group-danmu {
+      grid-template-columns: 96px minmax(150px, 1fr) auto;
+    }
+
+    .control-group-tools {
+      grid-template-columns: repeat(3, auto);
+      align-content: start;
+    }
+
+    #videoFile,
+    #bvidInput,
+    #sourceSelect,
+    #strategySelect {
+      flex: none;
     }
 
     #strategySelect {
-      flex: 0 0 88px;
+      min-width: 88px;
     }
 
     .settings-row {
-      flex: 1 1 100%;
+      grid-column: 1 / -1;
     }
 
     input,
@@ -127,9 +161,9 @@
       width: 100%;
       min-width: 0;
       padding: 0 10px;
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.045);
       color: var(--text);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.065);
       outline: none;
       font-size: 12px;
     }
@@ -155,7 +189,7 @@
       border: none;
       border-radius: 8px;
       padding: 5px 8px;
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.08);
       color: var(--text);
       cursor: pointer;
       font-size: 12px;
@@ -163,12 +197,12 @@
 
     button {
       padding: 0 12px;
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      background: var(--accent-strong);
       color: white;
       cursor: pointer;
       font-size: 12px;
       font-weight: 700;
-      box-shadow: 0 10px 24px rgba(255, 77, 115, 0.25);
+      box-shadow: 0 8px 18px rgba(255, 77, 115, 0.18);
       transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
       white-space: nowrap;
     }
@@ -176,15 +210,16 @@
     button:hover {
       transform: translateY(-1px);
       filter: brightness(1.04);
-      box-shadow: 0 14px 28px rgba(255, 77, 115, 0.32);
+      box-shadow: 0 10px 22px rgba(255, 77, 115, 0.22);
     }
 
     button:active {
       transform: translateY(0);
     }
 
-    #fullScreenBtn {
-      background: linear-gradient(135deg, #293549 0%, #1b2433 100%);
+    #fullScreenBtn,
+    .secondary-button {
+      background: #17202d;
       box-shadow: none;
     }
 
@@ -192,8 +227,14 @@
     #nextVideoBtn,
     #pickFolderBtn,
     #renamePageBtn {
-      background: linear-gradient(135deg, #293549 0%, #1b2433 100%);
+      background: #17202d;
       box-shadow: none;
+    }
+
+    #toggleSettingsBtn[aria-expanded="true"] {
+      background: rgba(255, 77, 115, 0.18);
+      color: #ffd7e0;
+      border: 1px solid rgba(255, 107, 138, 0.24);
     }
 
     button:disabled {
@@ -205,6 +246,8 @@
     }
 
     .viewer-grid {
+      position: relative;
+      z-index: 1;
       display: grid;
       grid-template-columns: minmax(0, 1fr) 300px;
       gap: 12px;
@@ -218,8 +261,8 @@
       background: var(--panel);
       border: 1px solid var(--panel-border);
       border-radius: 20px;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
+      box-shadow: 0 16px 42px rgba(0, 0, 0, 0.36);
+      backdrop-filter: blur(14px);
       padding: 12px;
       min-height: 180px;
       overflow: hidden;
@@ -284,7 +327,7 @@
       background: transparent;
     }
     .playlist-list:hover::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.22);
     }
 
     .playlist-item {
@@ -293,7 +336,7 @@
       text-align: left;
       padding: 10px;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.035);
       border: 1px solid transparent;
       color: var(--text);
       cursor: pointer;
@@ -317,8 +360,8 @@
       padding-bottom: 56.25%;
       border-radius: 12px;
       overflow: hidden;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(255, 255, 255, 0.06);
       /* 修复：防止 Safari 在圆角 + absolute 时的渲染溢出和重绘问题 */
       transform: translateZ(0);
       -webkit-mask-image: -webkit-radial-gradient(white, black);
@@ -340,14 +383,14 @@
         transform: none;
         box-shadow: none;
         filter: none;
-        border-color: rgba(255, 255, 255, 0.12);
-        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.055);
       }
     }
 
     .playlist-item.active {
-      border-color: rgba(255, 107, 138, 0.42);
-      background: rgba(255, 107, 138, 0.14);
+      border-color: rgba(255, 107, 138, 0.36);
+      background: rgba(255, 107, 138, 0.1);
     }
 
     .playlist-item-name {
@@ -457,19 +500,30 @@
     }
 
     .settings-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      align-items: center;
+      position: fixed;
+      top: 80px;
+      right: 12px;
+      z-index: 10000;
+      width: min(360px, calc(100vw - 24px));
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      align-items: stretch;
+      padding: 10px;
+      border-radius: 14px;
+      background: rgba(8, 12, 18, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.075);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.52);
+      backdrop-filter: blur(16px);
     }
 
     .settings-row .setting-group {
-      flex: 1 1 auto;
-      min-width: 160px;
+      min-width: 0;
     }
 
-    .settings-row > button {
-      flex: 0 0 auto;
+    .settings-row > button,
+    .settings-row > select {
+      min-height: 32px;
     }
 
     .settings-row.hidden {
@@ -478,12 +532,12 @@
 
     .setting-group {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
-      gap: 2px 4px;
-      min-height: 30px;
+      gap: 6px;
+      min-height: 32px;
       background: var(--panel-soft);
-      padding: 4px 6px;
+      padding: 3px 8px;
       border-radius: 9px;
       border: 1px solid rgba(255, 255, 255, 0.06);
     }
@@ -504,6 +558,7 @@
     .setting-value {
       font-size: 9px;
       color: var(--text);
+      min-width: 34px;
       text-align: right;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -513,11 +568,12 @@
       position: relative;
       width: 100%;
       max-width: 100%;
+      aspect-ratio: 16 / 9;
       overflow: hidden;
       background: #000;
       border-radius: 24px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: var(--shadow);
+      border: 1px solid rgba(255, 255, 255, 0.055);
+      box-shadow: var(--player-shadow);
       margin: 0 auto;
     }
 
@@ -565,8 +621,18 @@
     }
 
     @media (max-width: 980px) {
-      .settings-row {
+      .controls {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .control-group-tools {
         grid-column: 1 / -1;
+        grid-template-columns: repeat(3, minmax(0, auto));
+        justify-content: end;
+      }
+
+      .settings-row {
+        grid-template-columns: 1fr;
       }
 
       .viewer-grid {
@@ -580,8 +646,19 @@
       }
 
       .controls {
-        flex-direction: column;
         padding: 12px;
+        grid-template-columns: 1fr;
+      }
+
+      .control-group,
+      .control-group-source,
+      .control-group-danmu,
+      .control-group-tools {
+        grid-template-columns: 1fr;
+      }
+
+      .control-group-tools {
+        justify-content: stretch;
       }
 
       .settings-row {
@@ -649,41 +726,52 @@
   <main class="page">
     <section class="workspace">
       <div class="controls">
-        <input type="file" id="videoFile" accept="video/*" multiple>
-        <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
-        <button id="pickFolderBtn">选择文件夹</button>
-        <select id="sourceSelect" title="弹幕源" style="flex:0 0 92px">
-          <option value="bili">B站弹幕</option>
-          <option value="qq">腾讯弹幕</option>
-          <option value="mango">芒果弹幕</option>
-        </select>
-        <input type="text" id="bvidInput" placeholder="输入BV号、ep号或VID">
-         <button id="renamePageBtn">tools</button>
-        <button id="toggleSettingsBtn">弹幕设置</button>
-        <button id="fullScreenBtn">全屏播放</button>
-        <div class="settings-row hidden">
-          <div class="setting-group">
-            <label for="speedControl">弹幕速度</label>
-            <input type="range" id="speedControl" min="8" max="40" value="20" step="1">
-            <span class="setting-value" id="speedValue">20秒</span>
-          </div>
-          <div class="setting-group">
-            <label for="areaControl">显示区域</label>
-            <input type="range" id="areaControl" min="10" max="100" value="25" step="5">
-            <span class="setting-value" id="areaValue">25%</span>
-          </div>
-          <div class="setting-group">
-            <label for="offsetControl">弹幕偏移</label>
-            <input type="range" id="offsetControl" min="-120" max="120" value="0" step="1">
-            <span class="setting-value" id="offsetValue">0秒</span>
-          </div>
-           <select id="strategySelect" title="弹幕获取策略">
-            <option value="xml">XML</option>
-            <option value="seg.so" selected>seg.so</option>
+        <div class="control-group control-group-source" aria-label="视频来源">
+          <div class="control-group-title">视频来源</div>
+          <input type="file" id="videoFile" accept="video/*" multiple>
+          <input type="file" id="folderPicker" webkitdirectory directory multiple hidden>
+          <button id="pickFolderBtn" class="secondary-button">选择文件夹</button>
+        </div>
+
+        <div class="control-group control-group-danmu" aria-label="弹幕加载">
+          <div class="control-group-title">弹幕加载</div>
+          <select id="sourceSelect" title="弹幕源">
+            <option value="bili">B站弹幕</option>
+            <option value="qq">腾讯弹幕</option>
+            <option value="mango">芒果弹幕</option>
           </select>
+          <input type="text" id="bvidInput" placeholder="输入BV号、ep号或VID">
           <button id="loadDanmu">加载弹幕</button>
-          <button id="refreshDanmuBtn">刷新弹幕</button>
-          <button id="toggleStatusBtn">状态栏</button>
+          <div class="settings-row hidden" id="settingsPopover">
+            <div class="setting-group">
+              <label for="speedControl">弹幕速度</label>
+              <input type="range" id="speedControl" min="8" max="40" value="20" step="1">
+              <span class="setting-value" id="speedValue">20秒</span>
+            </div>
+            <div class="setting-group">
+              <label for="areaControl">显示区域</label>
+              <input type="range" id="areaControl" min="10" max="100" value="25" step="5">
+              <span class="setting-value" id="areaValue">25%</span>
+            </div>
+            <div class="setting-group">
+              <label for="offsetControl">弹幕偏移</label>
+              <input type="range" id="offsetControl" min="-120" max="120" value="0" step="1">
+              <span class="setting-value" id="offsetValue">0秒</span>
+            </div>
+            <select id="strategySelect" title="弹幕获取策略">
+              <option value="xml">XML</option>
+              <option value="seg.so" selected>seg.so</option>
+            </select>
+            <button id="refreshDanmuBtn">刷新弹幕</button>
+            <button id="toggleStatusBtn">调试信息</button>
+          </div>
+        </div>
+
+        <div class="control-group control-group-tools" aria-label="播放工具">
+          <div class="control-group-title">播放工具</div>
+          <button id="renamePageBtn" class="secondary-button">管理</button>
+          <button id="toggleSettingsBtn" class="secondary-button" aria-expanded="false" aria-controls="settingsPopover">弹幕设置</button>
+          <button id="fullScreenBtn">全屏播放</button>
         </div>
       </div>
       <div class="control-hint">如果从 iPad 等设备访问网页，请点击“获取服务器视频”播放 Mac 同目录下的视频文件；自动弹幕会优先识别文件名里的 `ep473307` 或 `BV...`。</div>
@@ -741,6 +829,7 @@
     const refreshDanmuBtn = document.getElementById('refreshDanmuBtn');
     const toggleStatusBtn = document.getElementById('toggleStatusBtn');
     const toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
+    const settingsPopover = document.getElementById('settingsPopover');
     const renamePageBtn = document.getElementById('renamePageBtn');
     const fullScreenBtn = document.getElementById('fullScreenBtn');
     const prevVideoBtn = document.getElementById('prevVideoBtn');
@@ -911,7 +1000,7 @@
 
     function setStatusBarVisible(visible) {
       statusBar.classList.toggle('hidden', !visible);
-      toggleStatusBtn.textContent = visible ? '隐藏状态' : '显示状态';
+      toggleStatusBtn.textContent = '调试信息';
       localStorage.setItem(statusBarVisibleKey, visible ? '1' : '0');
     }
 
@@ -1361,21 +1450,10 @@
 
     function updatePlayerSize() {
       if (!document.fullscreenElement) {
-        const containerWidth = player.parentElement.clientWidth;
         const playerTop = player.getBoundingClientRect().top;
         const availableHeight = Math.max(220, window.innerHeight - playerTop - 24);
-        const ratio = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
-
-        let width = containerWidth;
-        let height = width / ratio;
-
-        if (height > availableHeight) {
-          height = availableHeight;
-          width = height * ratio;
-        }
-
-        const finalHeight = Math.max(180, height);
-        player.style.width = `${Math.max(220, Math.min(width, containerWidth))}px`;
+        const finalHeight = Math.max(220, availableHeight);
+        player.style.width = '100%';
         player.style.height = `${finalHeight}px`;
 
         const playlistPanel = document.querySelector('.playlist-panel');
@@ -1755,9 +1833,40 @@
 
     toggleStatusBtn.addEventListener('click', () => setStatusBarVisible(statusBar.classList.contains('hidden')));
 
+    function positionSettingsPopover() {
+      const rect = toggleSettingsBtn.getBoundingClientRect();
+      const top = rect.bottom + 8;
+      settingsPopover.style.left = 'auto';
+      settingsPopover.style.right = '12px';
+      settingsPopover.style.top = `${top}px`;
+    }
+
+    function closeSettingsPopover({ restoreFocus = false } = {}) {
+      settingsPopover.classList.add('hidden');
+      toggleSettingsBtn.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) toggleSettingsBtn.focus();
+    }
+
     toggleSettingsBtn.addEventListener('click', () => {
-      const row = document.querySelector('.settings-row');
-      row.classList.toggle('hidden');
+      const willOpen = settingsPopover.classList.contains('hidden');
+      settingsPopover.classList.toggle('hidden', !willOpen);
+      toggleSettingsBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      if (willOpen) positionSettingsPopover();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (settingsPopover.classList.contains('hidden')) return;
+      if (settingsPopover.contains(event.target) || toggleSettingsBtn.contains(event.target)) return;
+      closeSettingsPopover();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || settingsPopover.classList.contains('hidden')) return;
+      closeSettingsPopover({ restoreFocus: true });
+    });
+
+    window.addEventListener('resize', () => {
+      if (!settingsPopover.classList.contains('hidden')) positionSettingsPopover();
     });
 
     renamePageBtn.addEventListener('click', () => {
