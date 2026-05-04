@@ -38,11 +38,30 @@ cp .env.example .env
 ## 配置 .env
 
 ```env
-VIDEO_DIR=/Users/yourname/video        # 视频文件目录
+# 服务器
+PORT=5001                               # 服务端口，默认 3000
+LOG_LEVEL=info                          # 日志级别: silent | error | warn | info | debug
+
+# 路径
+VIDEO_DIR=/Users/yourname/video         # 视频文件目录
 DANMU_CACHE_DIR=/Users/yourname/video/danmu  # 弹幕缓存
-PORT=5001                               # 服务端口
-BILI_SESSDATA=your_sessdata_here        # B站 Cookie（可选）
-LOG_LEVEL=info                          # 日志级别: silent/error/warn/info/debug
+
+# 认证
+BILI_SESSDATA=your_sessdata_here        # B站 Cookie，用于请求弹幕和元信息
+
+# 弹幕
+DANMAKU_MAX_DURATION=10800              # 最大时长（秒），默认 3 小时
+
+# 清理
+PLAYBACK_MAX_AGE=30                     # 播放记录保留天数
+```
+
+支持命令行参数临时切换日志级别：
+
+```bash
+node server.js --debug    # 临时开启调试日志
+node server.js --info     # 正常日志
+node server.js --warn     # 仅警告
 ```
 
 ## 弹幕源速查
@@ -101,15 +120,33 @@ npm run dist:mac    # macOS DMG
 ## 项目结构
 
 ```
-├── server.js           # Express 后端
-├── electron/           # Electron 主进程
-├── services/           # 弹幕源 API 客户端
-├── public/             # 前端页面
-│   ├── overlay.html    # 桌面悬浮窗
-│   ├── ipad.html       # iPad 直播页
-│   └── js/             # 前端脚本
-├── scripts/            # 辅助脚本 & 监控
-└── doc/                # 文档
+├── server.js              # Express 入口：中间件、清理任务、挂载路由
+├── routes/                # API 路由（按功能域拆分）
+│   ├── danmaku.js         #   弹幕获取（B站/腾讯/芒果/直播吧/腾讯体育）
+│   ├── video.js           #   视频流、缩略图、目录浏览
+│   ├── library.js         #   文件夹扫描、批量重命名
+│   ├── progress.js        #   播放进度存取、IINA 状态同步
+│   ├── convert.js         #   ffmpeg 转码任务
+│   ├── manage.js          #   视频管理、保留策略
+│   └── config.js          #   浮层弹幕配置、文件夹历史
+├── shared/                # 路由共享模块
+│   ├── constants.js       #   缓存目录等常量
+│   └── helpers.js         #   公共函数（路径解析、目录扫描等）
+├── services/              # 第三方弹幕源 API 封装
+│   ├── bilibili.js        #   B站
+│   ├── tencent.js         #   腾讯视频
+│   ├── mango.js           #   芒果TV
+│   ├── zhibo8.js          #   直播吧
+│   └── txsp.js            #   腾讯体育
+├── utils/                 # 工具函数（logger、file、video、response）
+├── public/                # 前端页面
+│   ├── video.html         #   桌面播放器
+│   ├── overlay.html       #   Electron 悬浮窗
+│   ├── ipad.html          #   iPad 触屏版
+│   └── js/                #   前端脚本（danmaku-core.js、overlay.js、ipad.js）
+├── electron/              # Electron 主进程 & preload
+├── scripts/               # 启动脚本 & IINA 监控
+└── doc/                   # 详细文档
 ```
 
 ## 详细文档

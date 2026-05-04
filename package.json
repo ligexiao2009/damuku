@@ -31,6 +31,8 @@
       "electron/**/*",
       "public/**/*",
       "server.js",
+      "routes/**/*",
+      "shared/**/*",
       "services/**/*",
       "utils/**/*",
       "node_modules/**/*",
