@@ -5,6 +5,11 @@ const os = require('os');
 const { spawn } = require('child_process');
 require('dotenv').config();
 
+// 命令行参数覆盖日志级别: node server.js --debug | --info | --warn | --error | --silent
+const LOG_LEVELS = ['silent', 'error', 'warn', 'info', 'debug'];
+const cliLevel = process.argv.find(a => a.startsWith('--') && LOG_LEVELS.includes(a.slice(2)));
+if (cliLevel) process.env.LOG_LEVEL = cliLevel.slice(2);
+
 const { success, fail } = require('./utils/response');
 const {
   decodeSafe,

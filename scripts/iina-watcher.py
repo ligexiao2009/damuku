@@ -58,6 +58,8 @@ def main():
     last_path = ""
     last_paused = None
     last_path_sync = 0
+    fail_count = 0
+    MAX_FAIL = 5  # 连续失败超过此次数视为 socket 已死
 
     while True:
         if not os.path.exists(SOCKET_PATH):
@@ -65,13 +67,22 @@ def main():
                 print("[离线] 等待 IINA...")
                 last_path = ""
                 last_pos = 0
+                fail_count = 0
             time.sleep(POLL)
             continue
 
         path = get_property("path")
         if not path:
+            fail_count += 1
+            if fail_count >= MAX_FAIL:
+                print("[超时] socket 无响应，视为离线，等待 IINA 重启...")
+                last_path = ""
+                last_pos = 0
+                fail_count = 0
             time.sleep(POLL)
             continue
+
+        fail_count = 0
 
         pos = get_property("time-pos")
         if pos is None:
