@@ -1,12 +1,11 @@
 const fs = require('fs');
-const path = require('path');
 const { success, fail } = require('../utils/response');
-const { decodeSafe, resolveExistingVideoPath, isVideoExt, scanVideos, getThumbPath } = require('../utils/file');
+const { decodeSafe, resolveExistingVideoPath, scanVideos, getThumbPath } = require('../utils/file');
 const { detectVideoIdFromName } = require('../utils/video');
 const { fetchBiliCover, downloadImage } = require('../services/bilibili');
-const { streamDirect, transcodeStream, generateLocalThumb } = require('../services/ffmpeg');
+const { generateLocalThumb } = require('../services/ffmpeg');
 const logger = require('../utils/logger');
-const { THUMB_DIR, FOLDERS_BASE } = require('../shared/constants');
+const { THUMB_DIR } = require('../shared/constants');
 const state = require('../shared/state');
 const { resolveLibraryDirectory, isPathValidationError } = require('../shared/helpers');
 
@@ -81,37 +80,6 @@ router.get('/thumbnail', async (req, res) => {
     const status = isPathValidationError(err) ? 400 : 500;
     if (status === 500) logger.error(err);
     res.status(status).send(status === 400 ? err.message : '缩略图失败');
-  }
-});
-
-// GET /video/:name
-router.get('/video/:name', (req, res) => {
-  try {
-    const fileName = decodeSafe(req.params.name);
-    const videoPath = resolveExistingVideoPath(fileName, state.videoDir);
-    streamDirect(videoPath, req, res);
-  } catch (err) {
-    if (!isPathValidationError(err)) logger.error(err);
-    res.status(400).send('非法请求');
-  }
-});
-
-// GET /stream
-router.get('/stream', (req, res) => {
-  try {
-    const fileName = decodeSafe(String(req.query.name || ''));
-    if (!fileName) return res.status(400).send('缺少文件名');
-
-    const videoPath = resolveExistingVideoPath(fileName, state.videoDir);
-    logger.debug('Streaming video:', videoPath);
-
-    const ext = path.extname(videoPath).toLowerCase();
-    const directPlayable = new Set(['.mp4', '.mov', '.webm', '.m4v']);
-    if (directPlayable.has(ext)) return streamDirect(videoPath, req, res);
-    return transcodeStream(videoPath, req, res);
-  } catch (err) {
-    if (!isPathValidationError(err)) logger.error(err);
-    res.status(400).send('非法请求');
   }
 });
 

@@ -11,8 +11,10 @@ if (cliLevel) process.env.LOG_LEVEL = cliLevel.slice(2);
 
 const logger = require('./utils/logger');
 const { CACHE_DIRS, PLAYBACK_DIR, THUMB_DIR, META_DIR, CONVERT_HISTORY_FILE, RETENTION_CONFIG_FILE, FOLDERS_BASE, PLAYBACK_MAX_AGE } = require('./shared/constants');
-const { isPathInside, isVideoExt } = require('./utils/file');
-const { resolveLibraryDirectory, resolveLibraryVideoFile } = require('./shared/helpers');
+const { isPathInside, isVideoExt, decodeSafe, resolveExistingVideoPath } = require('./utils/file');
+const { resolveLibraryDirectory, resolveLibraryVideoFile, isPathValidationError } = require('./shared/helpers');
+const { streamDirect, transcodeStream } = require('./services/ffmpeg');
+const state = require('./shared/state');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -49,6 +51,34 @@ app.get('/', (_req, res) => res.redirect('/video.html'));
 app.get('/ipad', (_req, res) => res.redirect('/ipad.html'));
 app.get('/manage', (_req, res) => res.redirect('/manage.html'));
 app.get('/rename', (_req, res) => res.redirect('/rename.html'));
+
+// 视频流直链（非 API，挂载在根路径）
+app.get('/video/:name', (req, res) => {
+  try {
+    const fileName = decodeSafe(req.params.name);
+    const videoPath = resolveExistingVideoPath(fileName, state.videoDir);
+    streamDirect(videoPath, req, res);
+  } catch (err) {
+    if (!isPathValidationError(err)) logger.error(err);
+    res.status(400).send('非法请求');
+  }
+});
+
+app.get('/stream', (req, res) => {
+  try {
+    const fileName = decodeSafe(String(req.query.name || ''));
+    if (!fileName) return res.status(400).send('缺少文件名');
+    const videoPath = resolveExistingVideoPath(fileName, state.videoDir);
+    logger.debug('Streaming video:', videoPath);
+    const ext = path.extname(videoPath).toLowerCase();
+    const directPlayable = new Set(['.mp4', '.mov', '.webm', '.m4v']);
+    if (directPlayable.has(ext)) return streamDirect(videoPath, req, res);
+    return transcodeStream(videoPath, req, res);
+  } catch (err) {
+    if (!isPathValidationError(err)) logger.error(err);
+    res.status(400).send('非法请求');
+  }
+});
 
 // 挂载路由模块
 app.use('/api', require('./routes/danmaku'));
