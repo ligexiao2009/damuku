@@ -14,6 +14,8 @@ const RETENTION_CONFIG_FILE = path.join(CACHE_DIR, 'retention_config.json');
 const FOLDERS_BASE = process.env.FOLDERS_BASE || path.join(os.homedir(), 'video');
 const PLAYBACK_MAX_AGE = (Number(process.env.PLAYBACK_MAX_AGE) || 30) * 86400000;
 
+const IPAD_CONFIG_FILE = path.join(CACHE_DIR, 'ipad_settings.json');
+
 const CACHE_DIRS = [CACHE_DIR, PLAYBACK_DIR, DANMU_DIR, THUMB_DIR, META_DIR];
 
 module.exports = {
@@ -29,5 +31,6 @@ module.exports = {
   RETENTION_CONFIG_FILE,
   FOLDERS_BASE,
   PLAYBACK_MAX_AGE,
+  IPAD_CONFIG_FILE,
   CACHE_DIRS
 };

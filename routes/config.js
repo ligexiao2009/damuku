@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { success, fail } = require('../utils/response');
-const { OVERLAY_CONFIG_FILE, FOLDER_HISTORY_FILE } = require('../shared/constants');
+const { OVERLAY_CONFIG_FILE, FOLDER_HISTORY_FILE, IPAD_CONFIG_FILE } = require('../shared/constants');
 const { resolveLibraryDirectory } = require('../shared/helpers');
 
 const router = require('express').Router();
@@ -57,6 +57,27 @@ router.put('/folder-history', (req, res) => {
     res.json(success(null));
   } catch (err) {
     res.status(400).json(fail(400, err.message));
+  }
+});
+
+// GET /api/ipad-settings
+router.get('/ipad-settings', (_req, res) => {
+  try {
+    if (!fs.existsSync(IPAD_CONFIG_FILE)) return res.json(success({}));
+    res.json(success(JSON.parse(fs.readFileSync(IPAD_CONFIG_FILE, 'utf-8'))));
+  } catch {
+    res.json(success({}));
+  }
+});
+
+// PUT /api/ipad-settings
+router.put('/ipad-settings', (req, res) => {
+  try {
+    const data = req.body || {};
+    fs.writeFileSync(IPAD_CONFIG_FILE, JSON.stringify(data, null, 2));
+    res.json(success(null));
+  } catch (err) {
+    res.status(500).json(fail(500, err.message));
   }
 });
 

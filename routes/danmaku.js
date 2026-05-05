@@ -245,8 +245,11 @@ router.get('/danmaku', async (req, res) => {
       const lastSeq = Number(req.query.lastSeq) || 0;
       const cursor = req.query.cursor || '';
       if (!roomId || !programId) return res.status(400).json(fail(400, '缺少 roomId 或 programId'));
-      logger.debug(`[txsp] 查询弹幕 roomId: ${roomId} programId: ${programId} lastSeq: ${lastSeq}`);
-      const txspCookie = req.query.txspCookie || '';
+      const txspCookie = req.query.txspCookie || process.env.TXSP_COOKIE || '';
+      const cookieSource = req.query.txspCookie ? 'client' : (process.env.TXSP_COOKIE ? 'env' : 'none');
+      const cookieHash = txspCookie ? `[${cookieSource}: ${txspCookie.slice(0,16)}...${txspCookie.slice(-8)}]` : '(无)';
+      logger.info(`[txsp] roomId=${roomId} programId=${programId} cookie=${cookieHash} lastSeq=${lastSeq}`);
+      if (txspCookie) logger.debug(`[txsp] cookie 完整值 (${txspCookie.length} 字符): ${txspCookie}`);
       const { danmus, maxSeq, cursor: nextCursor, pullInterval } = await fetchTxspDanmaku(roomId, programId, lastSeq, cursor, txspCookie);
       return res.json(success({ source: 'txsp', id: `${roomId}_${programId}`, count: danmus.length, danmus, maxSeq, cursor: nextCursor, pullInterval }));
     }

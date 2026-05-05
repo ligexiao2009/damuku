@@ -233,20 +233,57 @@
     if (e.key === 'Enter') loadDanmaku(bvidInput.value.trim());
   });
 
-  // txsp 粘贴智能提取 room_id / program_id
+  // txsp 粘贴智能提取 room_id / program_id / cookie
   bvidInput.addEventListener('paste', () => {
     if (sourceSelect.value !== 'txsp') return;
     setTimeout(() => {
-      const raw = bvidInput.value;
-      const roomMatch = raw.match(/"room_id"\s*:\s*(\d+)/);
-      const progMatch = raw.match(/"program_id"\s*:\s*"(\d+)"/);
-      const cookieMatch = raw.match(/"cookie"\s*:\s*"([^"]+)"/) || raw.match(/-b\s+'([^']+)'/);
+      const raw = bvidInput.value.trim();
+
+      // 1. JSON 格式（bookmarklet/extract 脚本输出）
+      const roomMatch = raw.match(/"room_?id"\s*:\s*(\d+)/i);
+      const progMatch = raw.match(/"program_?id"\s*:\s*"?(\d+)"?/i);
+      const cookieMatch = raw.match(/"cookie"\s*:\s*"((?:[^"\\]|\\.)*)"/i) || raw.match(/-b\s+'([^']+)'/);
+
+      // 2. 腾讯体育 URL 格式：提取 program_id
+      // https://v.qq.com/live/p/newtopic/366830/index.html
+      let urlProgMatch = null;
+      let urlRoomMatch = null;
+      try {
+        const u = new URL(raw);
+        if (u.hostname.includes('qq.com')) {
+          urlProgMatch = u.pathname.match(/\/newtopic\/(\d+)/i) || u.pathname.match(/\/program\/(\d+)/i);
+          urlRoomMatch = u.pathname.match(/\/room\/(\d+)/i);
+          // 尝试从 URL 参数提取
+          urlProgMatch = urlProgMatch || u.searchParams.get('program_id');
+          urlRoomMatch = urlRoomMatch || u.searchParams.get('room_id');
+        }
+      } catch {}
+
+      // 3. 纯数字格式（如直播吧 matchId）
+      const numericMatch = /^\d{4,}$/.test(raw) ? raw : null;
+
       if (roomMatch) txspRoomId.value = roomMatch[1];
       if (progMatch) txspProgramId.value = progMatch[1];
-      if (cookieMatch) txspCookie = cookieMatch[1];
-      if (roomMatch || progMatch) {
+      if (cookieMatch) { txspCookie = cookieMatch[1]; console.log('[txsp-paste] cookie 提取:', txspCookie.slice(0,60) + '...' + txspCookie.slice(-20)); }
+      if (urlProgMatch) txspProgramId.value = urlProgMatch[1];
+      if (urlRoomMatch) txspRoomId.value = urlRoomMatch[1];
+
+      const hasRoom = !!(roomMatch || urlRoomMatch);
+      const hasProg = !!(progMatch || urlProgMatch);
+      const hasCookie = !!cookieMatch;
+
+      if (hasRoom || hasProg) {
         bvidInput.value = '';
-        setStatus('已自动提取 Room ID 和 Program ID');
+        const parts = [];
+        if (hasRoom) parts.push('Room ID');
+        if (hasProg) parts.push('Program ID');
+        if (hasCookie) parts.push('Cookie');
+        setStatus('已提取: ' + parts.join(' + '));
+        saveSettings();
+      } else if (numericMatch) {
+        bvidInput.value = '';
+        setStatus('数字已提取: ' + numericMatch);
+        saveSettings();
       }
     }, 100);
   });
@@ -361,35 +398,63 @@
   pulseStyle.textContent = '@keyframes dotPulse { 0%,100%{opacity:0.15} 50%{opacity:0.6} }';
   document.head.appendChild(pulseStyle);
 
-  // --- 本地持久化 ---
+  // --- 多端同步（服务端持久化） ---
   const streamInput = document.getElementById('streamUrl');
-  const STREAM_KEY = 'ipad_stream_url';
-  const MATCH_KEY = 'ipad_match_id';
+  var saveTimer = null;
+  var ipadSettings = {};
 
-  if (streamInput) {
-    const saved = localStorage.getItem(STREAM_KEY);
-    if (saved) streamInput.value = saved;
-    streamInput.addEventListener('change', () => localStorage.setItem(STREAM_KEY, streamInput.value.trim()));
-  }
-  if (bvidInput) {
-    const saved = localStorage.getItem(MATCH_KEY);
-    if (saved) bvidInput.value = saved;
-    bvidInput.addEventListener('change', () => localStorage.setItem(MATCH_KEY, bvidInput.value.trim()));
+  function saveSettings() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      ipadSettings.streamUrl = streamInput ? streamInput.value.trim() : '';
+      ipadSettings.matchId = bvidInput ? bvidInput.value.trim() : '';
+      ipadSettings.txspRoomId = txspRoomId ? txspRoomId.value.trim() : '';
+      ipadSettings.txspProgramId = txspProgramId ? txspProgramId.value.trim() : '';
+      ipadSettings.txspCookie = txspCookie || '';
+      ipadSettings.source = sourceSelect ? sourceSelect.value : '';
+      ipadSettings.txspLastSeq = txspLastSeq;
+      ipadSettings.txspCursor = txspCursor;
+      fetch(SERVER + '/api/ipad-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ipadSettings)
+      }).catch(() => {});
+    }, 500);
   }
 
-  var liveLoadBtn = document.getElementById('live-load-btn');
-  if (liveLoadBtn && streamInput) {
-    var origClick = liveLoadBtn.onclick;
-    liveLoadBtn.onclick = function(e) {
-      localStorage.setItem(STREAM_KEY, streamInput.value.trim());
-      if (origClick) origClick.call(this, e);
-    };
+  async function loadSettings() {
+    try {
+      ipadSettings = await api(SERVER + '/api/ipad-settings') || {};
+    } catch (e) { ipadSettings = {}; }
+
+    if (ipadSettings.streamUrl && streamInput) streamInput.value = ipadSettings.streamUrl;
+    if (ipadSettings.matchId && bvidInput) bvidInput.value = ipadSettings.matchId;
+    if (ipadSettings.txspRoomId && txspRoomId) txspRoomId.value = ipadSettings.txspRoomId;
+    if (ipadSettings.txspProgramId && txspProgramId) txspProgramId.value = ipadSettings.txspProgramId;
+    if (ipadSettings.txspCookie) txspCookie = ipadSettings.txspCookie;
+    if (ipadSettings.source && sourceSelect) sourceSelect.value = ipadSettings.source;
+    if (ipadSettings.txspLastSeq) txspLastSeq = ipadSettings.txspLastSeq;
+    if (ipadSettings.txspCursor) txspCursor = ipadSettings.txspCursor;
   }
 
-  var origLoadClick = loadBtn.onclick;
-  loadBtn.onclick = function(e) {
-    localStorage.setItem(MATCH_KEY, bvidInput.value.trim());
-    if (origLoadClick) origLoadClick.call(this, e);
+  if (streamInput) streamInput.addEventListener('input', saveSettings);
+  if (bvidInput) bvidInput.addEventListener('input', saveSettings);
+  if (txspRoomId) txspRoomId.addEventListener('input', saveSettings);
+  if (txspProgramId) txspProgramId.addEventListener('input', saveSettings);
+  if (sourceSelect) sourceSelect.addEventListener('change', saveSettings);
+
+  // 保存 cookie 到设置（每次粘贴提取后）
+  var origLoadDanmaku = loadDanmaku;
+  loadDanmaku = function(id) {
+    ipadSettings.txspCookie = txspCookie;
+    ipadSettings.txspLastSeq = txspLastSeq;
+    ipadSettings.txspCursor = txspCursor;
+    fetch(SERVER + '/api/ipad-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ipadSettings)
+    }).catch(() => {});
+    return origLoadDanmaku(id);
   };
 
   // --- Init ---
@@ -398,7 +463,12 @@
   document.getElementById('zhibo8-type-row').style.display = '';
   document.getElementById('folder-row').style.display = 'none';
   document.getElementById('video-file-row').style.display = 'none';
-  setStatus('就绪 — 输入比赛ID，点击加载弹幕');
+
+  (async () => {
+    await loadSettings();
+    if (sourceSelect) sourceSelect.dispatchEvent(new Event('change'));
+    setStatus('就绪 — 输入比赛ID，点击加载弹幕（设置已同步）');
+  })();
 
   console.log('iPad Danmaku Overlay ready');
 })();

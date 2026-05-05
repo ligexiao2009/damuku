@@ -436,20 +436,47 @@
   loadBtn.addEventListener('click', () => loadDanmaku(bvidInput.value.trim()));
   refreshBtn.addEventListener('click', () => loadDanmaku(bvidInput.value.trim(), { refresh: true }));
 
-  // txsp 粘贴智能提取 room_id / program_id
+  // txsp 粘贴智能提取 room_id / program_id / cookie
   bvidInput.addEventListener('paste', () => {
     if (sourceSelect.value !== 'txsp') return;
     setTimeout(() => {
-      const raw = bvidInput.value;
-      const roomMatch = raw.match(/"room_id"\s*:\s*(\d+)/);
-      const progMatch = raw.match(/"program_id"\s*:\s*"(\d+)"/);
-      const cookieMatch = raw.match(/"cookie"\s*:\s*"([^"]+)"/) || raw.match(/-b\s+'([^']+)'/);
+      const raw = bvidInput.value.trim();
+
+      // 1. JSON 格式（bookmarklet/extract 脚本输出）
+      const roomMatch = raw.match(/"room_?id"\s*:\s*(\d+)/i);
+      const progMatch = raw.match(/"program_?id"\s*:\s*"?(\d+)"?/i);
+      const cookieMatch = raw.match(/"cookie"\s*:\s*"((?:[^"\\]|\\.)*)"/i) || raw.match(/-b\s+'([^']+)'/);
+
+      // 2. 腾讯体育 URL 格式：提取 program_id
+      let urlProgMatch = null;
+      let urlRoomMatch = null;
+      try {
+        const u = new URL(raw);
+        if (u.hostname.includes('qq.com')) {
+          urlProgMatch = u.pathname.match(/\/newtopic\/(\d+)/i) || u.pathname.match(/\/program\/(\d+)/i);
+          urlRoomMatch = u.pathname.match(/\/room\/(\d+)/i);
+          urlProgMatch = urlProgMatch || u.searchParams.get('program_id');
+          urlRoomMatch = urlRoomMatch || u.searchParams.get('room_id');
+        }
+      } catch {}
+
       if (roomMatch) txspRoomId.value = roomMatch[1];
       if (progMatch) txspProgramId.value = progMatch[1];
-      if (cookieMatch) txspCookie = cookieMatch[1];
-      if (roomMatch || progMatch) {
+      if (cookieMatch) { txspCookie = cookieMatch[1]; console.log('[txsp-paste] cookie 提取:', txspCookie.slice(0,60) + '...' + txspCookie.slice(-20)); }
+      if (urlProgMatch) txspProgramId.value = urlProgMatch[1];
+      if (urlRoomMatch) txspRoomId.value = urlRoomMatch[1];
+
+      const hasRoom = !!(roomMatch || urlRoomMatch);
+      const hasProg = !!(progMatch || urlProgMatch);
+      const hasCookie = !!cookieMatch;
+
+      if (hasRoom || hasProg) {
         bvidInput.value = '';
-        setStatus('已自动提取 Room ID 和 Program ID');
+        const parts = [];
+        if (hasRoom) parts.push('Room ID');
+        if (hasProg) parts.push('Program ID');
+        if (hasCookie) parts.push('Cookie');
+        setStatus('已提取: ' + parts.join(' + '));
       }
     }, 100);
   });

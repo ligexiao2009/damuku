@@ -14,10 +14,11 @@
     "dist:win": "npm run bump && electron-builder build --win nsis"
   },
   "dependencies": {
-    "axios": "^1.7.2",
+    "axios": "^1.16.0",
+    "dayjs": "^1.11.20",
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
-    "fast-xml-parser": "^4.4.0",
+    "fast-xml-parser": "^4.5.6",
     "protobufjs": "^8.0.1"
   },
   "devDependencies": {
