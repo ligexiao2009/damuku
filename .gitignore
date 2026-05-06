@@ -70,3 +70,5 @@ Thumbs.db
 # pending-trades.json
 
 __pycache__/
+
+utils/downloaded.txt
