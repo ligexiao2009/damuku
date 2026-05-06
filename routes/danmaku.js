@@ -345,8 +345,8 @@ router.get('/danmaku', async (req, res) => {
 
     // 爱奇艺
     if (source === 'iqiyi') {
-      if (!id || !/^\d{16}$/.test(String(id).trim())) {
-        return res.status(400).json(fail(400, '爱奇艺源需要 16 位 tvid'));
+      if (!id || !/^\d{9,16}$/.test(String(id).trim())) {
+        return res.status(400).json(fail(400, '爱奇艺源需要 9-16 位 tvid'));
       }
       const tvid = String(id).trim();
       const forceRefresh = req.query.refresh === '1';

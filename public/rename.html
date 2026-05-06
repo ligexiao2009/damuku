@@ -155,8 +155,8 @@
     <input type="text" id="iqiyiFolderPath" placeholder="例如 /Users/yang/video/低智商犯罪" onchange="document.getElementById('iqiyiFolderSelect').value=''">
     <div class="hint">从右侧下拉框选择服务器目录可自动填入路径，也可手动输入。</div>
 
-    <label>任意一集的 16 位 tvid</label>
-    <input type="text" id="iqiyiTvid" placeholder="例如 4928206159037400">
+    <label>任意一集的 tvid（9-16位数字）</label>
+    <input type="text" id="iqiyiTvid" placeholder="例如 103405000">
 
     <button id="iqiyiRenameBtn">开始批量重命名</button>
     <pre id="iqiyiResult">等待操作...</pre>
@@ -375,7 +375,24 @@
         folders.forEach(f => { const o = document.createElement('option'); o.value = f.path; o.textContent = f.name; iqiyiFolderSelect.appendChild(o); });
       } catch {}
     })();
-    iqiyiFolderSelect.addEventListener('change', () => { if (iqiyiFolderSelect.value) iqiyiFolderPath.value = iqiyiFolderSelect.value; });
+    iqiyiFolderSelect.addEventListener('change', async () => {
+      const dir = iqiyiFolderSelect.value;
+      if (!dir) return;
+      iqiyiFolderPath.value = dir;
+      // 扫描文件夹，提取 tvid 自动填入
+      try {
+        const files = await api(`/api/video-files?folder=${encodeURIComponent(dir)}`);
+        for (const f of files) {
+          const m = f.name.match(/\d{9,16}/);
+          if (m) {
+            iqiyiTvid.value = m[0];
+            iqiyiTvid.style.background = '#1a3a1a';
+            setTimeout(() => { iqiyiTvid.style.background = ''; }, 2000);
+            break;
+          }
+        }
+      } catch {}
+    });
 
     iqiyiRenameBtn.addEventListener('click', async () => {
       const folderPath = iqiyiFolderPath.value.trim();

@@ -1117,7 +1117,7 @@
     function detectIqiyiTvidFromName(name) {
       if (!name) return '';
       const baseName = String(name).replace(/\.[^.]+$/, '');
-      const m = baseName.match(/(\d{16})/);
+      const m = baseName.match(/(\d{9,16})/);
       return m ? m[1] : '';
     }
 
@@ -1826,7 +1826,7 @@
       const src = sourceSelect.value;
       const isBili = src === 'bili';
       strategySelect.style.display = isBili ? '' : 'none';
-      bvidInput.placeholder = isBili ? '输入BV号、ep号' : src === 'qq' ? '输入VID' : src === 'iqiyi' ? '输入16位tvid' : '输入HHMMSS/videoId';
+      bvidInput.placeholder = isBili ? '输入BV号、ep号' : src === 'qq' ? '输入VID' : src === 'iqiyi' ? '输入tvid' : '输入HHMMSS/videoId';
       if (currentVideoName && currentVideoName !== '未选择') {
         bvidInput.value = getVideoIdForSource(currentVideoName, src);
       }

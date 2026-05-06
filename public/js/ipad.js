@@ -333,7 +333,7 @@
     document.getElementById('video-file-row').style.display = (z || t) ? 'none' : '';
     if (z) bvidInput.placeholder = '输入比赛ID';
     else if (t) bvidInput.placeholder = '输入比赛ID（不用填）';
-    else if (sourceSelect.value === 'iqiyi') bvidInput.placeholder = '输入 16 位 tvid';
+    else if (sourceSelect.value === 'iqiyi') bvidInput.placeholder = '输入 tvid';
     else bvidInput.placeholder = '输入 BV 号或 EP 号...';
     if (!z && !t) clearPollTimers();
   });

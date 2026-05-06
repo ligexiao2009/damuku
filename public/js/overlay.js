@@ -515,7 +515,7 @@
     if (src === 'bili') bvidInput.placeholder = '输入 BV 号或 EP 号';
     else if (src === 'qq') bvidInput.placeholder = '输入 VID';
     else if (src === 'mango') bvidInput.placeholder = '输入 HHMMSS/videoId';
-    else if (src === 'iqiyi') bvidInput.placeholder = '输入 16 位 tvid';
+    else if (src === 'iqiyi') bvidInput.placeholder = '输入 tvid';
     else if (isZhibo8) bvidInput.placeholder = '输入比赛ID';
     else bvidInput.placeholder = '输入比赛ID（不用填）';
     const name = videoFileSelect.value || bvidInput.value;
@@ -835,7 +835,7 @@
   function detectIqiyiTvid(name) {
     if (!name) return '';
     const base = String(name).replace(/\.[^.]+$/, '');
-    const m = base.match(/(\d{16})/);
+    const m = base.match(/(\d{9,16})/);
     return m ? m[1] : '';
   }
 
