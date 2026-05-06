@@ -127,7 +127,7 @@
 
   async function loadDanmaku(id) {
     const source = sourceSelect.value;
-    const label = { zhibo8: '直播吧', txsp: '腾讯体育' }[source] || source;
+    const label = { zhibo8: '直播吧', txsp: '腾讯体育', bili: 'B站', qq: '腾讯', mango: '芒果', iqiyi: '爱奇艺' }[source] || source;
     clearPollTimers();
 
     if (source === 'zhibo8') {
@@ -201,6 +201,19 @@
 
       poll();
       return;
+    }
+
+    // VOD 弹幕（bili, qq, mango, iqiyi）
+    if (!id) { setStatus('请输入ID'); return; }
+    setStatus(`加载${label}弹幕中...`);
+    try {
+      const params = new URLSearchParams({ source, id });
+      const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
+      engine.load(data.danmus);
+      setStatus(`已加载 ${data.danmus.length} 条弹幕 · ${id}`);
+      if (!isRunning) startSimulation();
+    } catch (err) {
+      setStatus(`加载失败: ${err.message}`);
     }
   }
 
@@ -320,6 +333,7 @@
     document.getElementById('video-file-row').style.display = (z || t) ? 'none' : '';
     if (z) bvidInput.placeholder = '输入比赛ID';
     else if (t) bvidInput.placeholder = '输入比赛ID（不用填）';
+    else if (sourceSelect.value === 'iqiyi') bvidInput.placeholder = '输入 16 位 tvid';
     else bvidInput.placeholder = '输入 BV 号或 EP 号...';
     if (!z && !t) clearPollTimers();
   });

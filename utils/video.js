@@ -25,6 +25,14 @@ function detectVideoIdFromName(name) {
   return '';
 }
 
+/** 从文件名中提取爱奇艺 16 位 tvid，未匹配返回 ''。 */
+function detectIqiyiTvidFromName(name) {
+  if (!name) return '';
+  const base = path.basename(name, path.extname(name));
+  const m = base.match(/(\d{16})/);
+  return m ? m[1] : '';
+}
+
 /** 去除文件名中的非法字符，空格替换为下划线。 */
 function sanitizeFileName(name) {
   return String(name || '')
@@ -68,9 +76,24 @@ function extractEpId(input) {
   return null;
 }
 
+/** 从文件名中提取所有腾讯 VID（支持多 VID 拼接场景）。 */
+function detectVidsFromName(name) {
+  if (!name) return [];
+  const base = path.basename(name, path.extname(name));
+  const matches = base.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/gi);
+  if (!matches) return [];
+  // 排除 BV 号
+  return matches.map(m => {
+    const cleaned = m.replace(/^[_\s-]+/, '');
+    return cleaned;
+  }).filter(v => !/^BV/i.test(v));
+}
+
 module.exports = {
   getVideoMimeType,
   detectVideoIdFromName,
+  detectVidsFromName,
+  detectIqiyiTvidFromName,
   sanitizeFileName,
   extractEpisodeNumberFromFileName,
   extractEpId

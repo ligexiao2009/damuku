@@ -199,17 +199,19 @@ html, body {
 /* Status indicator dot — small visible hint overlay is running */
 #status-indicator {
   position: fixed;
-  top: 12px;
-  right: 12px;
-  width: 10px;
-  height: 10px;
+  bottom: 24px;
+  right: 24px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: rgba(255, 107, 138, 0.7);
   z-index: 9998;
-  pointer-events: none;
-  box-shadow: 0 0 8px rgba(255, 107, 138, 0.5);
+  pointer-events: auto;
+  cursor: grab;
+  box-shadow: 0 0 10px rgba(255, 107, 138, 0.5);
   transition: opacity 0.5s ease;
 }
+#status-indicator:active { cursor: grabbing; }
 
 #status-indicator.fading {
   opacity: 0.15;

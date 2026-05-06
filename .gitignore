@@ -68,4 +68,5 @@ Thumbs.db
 # data.json
 # daily-profit.json
 # pending-trades.json
-# trade-history.json
+
+__pycache__/

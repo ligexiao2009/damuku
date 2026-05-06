@@ -91,6 +91,13 @@
       engine.configure(cfg);
       syncControlsFromEngine();
       if (cfg.lastFolder) lastFolder = cfg.lastFolder;
+      // 恢复红点位置
+      if (cfg.indicatorLeft && cfg.indicatorTop) {
+        statusIndicator.style.right = 'auto';
+        statusIndicator.style.bottom = 'auto';
+        statusIndicator.style.left = cfg.indicatorLeft;
+        statusIndicator.style.top = cfg.indicatorTop;
+      }
     } catch (e) {
       console.log('无法加载配置，使用默认值');
     }
@@ -100,6 +107,13 @@
     try {
       const cfg = engine.getConfig();
       cfg.lastFolder = lastFolder;
+      // 保存红点位置
+      var left = statusIndicator.style.left;
+      var top = statusIndicator.style.top;
+      if (left && left !== 'auto' && top && top !== 'auto') {
+        cfg.indicatorLeft = left;
+        cfg.indicatorTop = top;
+      }
       await fetch(`${SERVER}/api/overlay-config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -179,7 +193,7 @@
       setStatus('请输入 BV号、EP号 或 VID');
       return;
     }
-    const label = { bili: 'B站', qq: '腾讯', mango: '芒果', zhibo8: '直播吧' }[source] || source;
+    const label = { bili: 'B站', qq: '腾讯', mango: '芒果', zhibo8: '直播吧', txsp: '腾讯体育', iqiyi: '爱奇艺' }[source] || source;
 
     clearPollTimers();
 
@@ -277,7 +291,10 @@
     try {
       const params = new URLSearchParams({ source, id });
       if (source === 'bili') params.set('strategy', 'seg.so');
-      if (source === 'qq') params.set('duration', String(maxDuration * 1000));
+      if (source === 'qq') {
+        if (currentVideoFileName) params.set('file', currentVideoFileName);
+        else params.set('duration', String(maxDuration * 1000));
+      }
       if (refresh) params.set('refresh', '1');
       const data = await api(`${SERVER}/api/danmaku?${params.toString()}`);
       engine.load(data.danmus);
@@ -490,13 +507,15 @@
     clearPollTimers();
     const isZhibo8 = src === 'zhibo8';
     const isTxsp = src === 'txsp';
+    const isLive = isZhibo8 || isTxsp;
     zhibo8TypeRow.style.display = isZhibo8 ? '' : 'none';
     txspConfigRow.style.display = isTxsp ? '' : 'none';
-    folderRow.style.display = (isZhibo8 || isTxsp) ? 'none' : '';
-    videoFileRow.style.display = (isZhibo8 || isTxsp) ? 'none' : '';
+    folderRow.style.display = isLive ? 'none' : '';
+    videoFileRow.style.display = isLive ? 'none' : '';
     if (src === 'bili') bvidInput.placeholder = '输入 BV 号或 EP 号';
     else if (src === 'qq') bvidInput.placeholder = '输入 VID';
     else if (src === 'mango') bvidInput.placeholder = '输入 HHMMSS/videoId';
+    else if (src === 'iqiyi') bvidInput.placeholder = '输入 16 位 tvid';
     else if (isZhibo8) bvidInput.placeholder = '输入比赛ID';
     else bvidInput.placeholder = '输入比赛ID（不用填）';
     const name = videoFileSelect.value || bvidInput.value;
@@ -724,6 +743,57 @@
     });
   }
 
+  // --- Indicator (红点) 拖动 + 位置记忆 ---
+  var indicatorDrag = null;
+  statusIndicator.style.pointerEvents = 'auto';
+  statusIndicator.style.cursor = 'grab';
+
+  // 红点区域悬停时临时关闭点击穿透，否则 Electron 下无法响应鼠标
+  statusIndicator.addEventListener('mouseenter', function() {
+    if (window.electronAPI && !panelVisible) window.electronAPI.setClickThrough(false);
+  });
+  statusIndicator.addEventListener('mouseleave', function() {
+    if (window.electronAPI && !panelVisible) window.electronAPI.setClickThrough(true);
+  });
+
+  statusIndicator.addEventListener('mousedown', function(e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    indicatorDrag = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: statusIndicator.offsetLeft,
+      startTop: statusIndicator.offsetTop,
+      moved: false
+    };
+    statusIndicator.style.cursor = 'grabbing';
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!indicatorDrag) return;
+    var dx = e.clientX - indicatorDrag.startX;
+    var dy = e.clientY - indicatorDrag.startY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) indicatorDrag.moved = true;
+    statusIndicator.style.right = 'auto';
+    statusIndicator.style.bottom = 'auto';
+    statusIndicator.style.left = (indicatorDrag.startLeft + dx) + 'px';
+    statusIndicator.style.top = (indicatorDrag.startTop + dy) + 'px';
+  });
+
+  document.addEventListener('mouseup', function(e) {
+    if (!indicatorDrag) return;
+    statusIndicator.style.cursor = 'grab';
+    if (!indicatorDrag.moved) {
+      // 点击行为：切换面板
+      togglePanel();
+    } else {
+      // 拖动行为：保存位置
+      saveConfig();
+    }
+    indicatorDrag = null;
+  });
+
   // --- Indicator fade ---
   function fadeIndicator() {
     if (fadeTimer) clearTimeout(fadeTimer);
@@ -744,18 +814,44 @@
     return '';
   }
 
+  function detectVids(name) {
+    if (!name) return [];
+    const base = String(name).replace(/\.[^.]+$/, '');
+    const re = /(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/gi;
+    const vids = [];
+    let m;
+    while ((m = re.exec(base)) !== null) {
+      const v = m[1];
+      if (!/^BV/i.test(v)) vids.push(v);
+    }
+    return vids;
+  }
+
   function detectVid(name) {
+    const vids = detectVids(name);
+    return vids.length > 0 ? vids.join(',') : '';
+  }
+
+  function detectIqiyiTvid(name) {
     if (!name) return '';
     const base = String(name).replace(/\.[^.]+$/, '');
-    const m = base.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/i);
-    if (!m) return '';
-    // 排除 BV 号
-    if (/^BV/i.test(m[1])) return '';
-    return m[1];
+    const m = base.match(/(\d{16})/);
+    return m ? m[1] : '';
+  }
+
+  function detectVideoId(name) {
+    if (!name) return '';
+    const base = String(name).replace(/\.[^.]+$/, '');
+    const bv = base.match(/BV[0-9A-Za-z]+/i);
+    if (bv) return bv[0];
+    const ep = base.match(/(?:^|[_\s-])(ep\d{4,})(?=$|[_\s-])/i);
+    if (ep) return ep[1];
+    return '';
   }
 
   function getVideoIdForSource(name, source) {
     if (source === 'qq') return detectVid(name);
+    if (source === 'iqiyi') return detectIqiyiTvid(name);
     return detectVideoId(name);
   }
 
@@ -835,12 +931,16 @@
     // 自动检测弹幕源
     const biliId = detectVideoId(selected);
     const tencentId = detectVid(selected);
+    const iqiyiId = detectIqiyiTvid(selected);
     if (tencentId) {
       sourceSelect.value = 'qq';
       bvidInput.value = tencentId;
     } else if (biliId) {
       sourceSelect.value = 'bili';
       bvidInput.value = biliId;
+    } else if (iqiyiId) {
+      sourceSelect.value = 'iqiyi';
+      bvidInput.value = iqiyiId;
     } else {
       bvidInput.value = '';
     }
@@ -977,17 +1077,18 @@
     setTimeout(hidePanel, 20000);
   }
 
-  // Fade indicator on panel toggle
+  // 面板打开时红点变淡，隐藏时红点亮起（方便找到它）
   const origShowPanel = showPanel;
   showPanel = function () {
     origShowPanel();
-    statusIndicator.classList.remove('fading');
+    statusIndicator.classList.add('fading');
     if (fadeTimer) clearTimeout(fadeTimer);
   };
   const origHidePanel = hidePanel;
   hidePanel = function () {
     origHidePanel();
-    fadeIndicator();
+    statusIndicator.classList.remove('fading');
+    if (fadeTimer) clearTimeout(fadeTimer);
   };
 
   console.log('Danmaku Overlay ready');

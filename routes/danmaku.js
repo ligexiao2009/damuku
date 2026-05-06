@@ -1,16 +1,35 @@
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const { success, fail } = require('../utils/response');
-const { getCacheFilePaths } = require('../utils/file');
+const { getCacheFilePaths, decodeSafe, resolveExistingVideoPath } = require('../utils/file');
 const { fetchVideoMeta, fetchDanmuXml, fetchDanmuSeg } = require('../services/bilibili');
 const { parseDanmu, tryParseDanmuSeg } = require('../services/danmu');
 const { fetchTencentDanmaku } = require('../services/tencent');
 const { fetchMangoDanmaku } = require('../services/mango');
 const { fetchZhibo8Danmaku } = require('../services/zhibo8');
 const { fetchTxspDanmaku } = require('../services/txsp');
+const { fetchAiQiYiDanmaku } = require('../services/aiqiyi');
 const logger = require('../utils/logger');
 const { DANMU_DIR, META_DIR } = require('../shared/constants');
 const { danmuProgressMap } = require('../shared/state');
+const state = require('../shared/state');
+
+/** 用 ffprobe 获取视频文件精确时长（秒） */
+function probeDuration(videoPath) {
+  return new Promise((resolve) => {
+    const probe = spawn('ffprobe', [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1', videoPath
+    ]);
+    let out = '';
+    probe.stdout.on('data', d => out += d.toString());
+    probe.on('close', code => {
+      resolve(code === 0 ? Math.ceil(parseFloat(out.trim()) || 0) : 0);
+    });
+    probe.on('error', () => resolve(0));
+  });
+}
 
 const router = require('express').Router();
 
@@ -150,23 +169,93 @@ router.get('/danmaku', async (req, res) => {
 
     // 腾讯
     if (source === 'qq') {
-      const vid = id;
-      const durMs = Number(duration) || 3600000;
+      const vids = String(id || '').split(',').map(v => v.trim()).filter(Boolean);
       const forceRefresh = req.query.refresh === '1';
-      const cacheFile = path.join(DANMU_DIR, `qq_${vid}.json`);
+      const TRIM = 90; // 片头片尾各裁 90s
 
+      const qqCookie = process.env.TXSP_COOKIE || '';
+
+      if (vids.length === 1) {
+        // 单 VID：原有逻辑
+        const vid = vids[0];
+        let durMs = Number(duration) || 0;
+        // 尝试从视频文件获取精确时长
+        const fileParam = req.query.file;
+        if (!durMs && fileParam) {
+          try {
+            const safeName = decodeSafe(fileParam);
+            const vp = resolveExistingVideoPath(safeName, state.videoDir);
+            const sec = await probeDuration(vp);
+            if (sec > 0) { durMs = sec * 1000; logger.info(`[tencent] ffprobe 获取时长: ${sec}s`); }
+          } catch {}
+        }
+        if (!durMs) durMs = 3600000;
+        const cacheFile = path.join(DANMU_DIR, `qq_${vid}.json`);
+        if (!forceRefresh && fs.existsSync(cacheFile)) {
+          const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+          return res.json(success({ ...cached, fromCache: true }));
+        }
+        logger.info(`[tencent] 抓取弹幕 VID: ${vid} 时长: ${(durMs / 60000).toFixed(1)}分钟`);
+        logger.timeDebug('[tencent] 耗时');
+        const danmus = await fetchTencentDanmaku(vid, durMs, qqCookie);
+        logger.timeEndDebug('[tencent] 耗时');
+        logger.info(`[tencent] 完成，共 ${danmus.length} 条`);
+        const result = { source: 'qq', id: vid, count: danmus.length, danmus };
+        backupCache(cacheFile);
+        fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
+        return res.json(success(result));
+      }
+
+      // 多 VID 拼接
+      const cacheKey = `qq_multi_${vids.join('_')}`;
+      const cacheFile = path.join(DANMU_DIR, `${cacheKey}.json`);
       if (!forceRefresh && fs.existsSync(cacheFile)) {
         const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
         return res.json(success({ ...cached, fromCache: true }));
       }
 
-      logger.info(`[tencent] 抓取弹幕 VID: ${vid} 时长: ${(durMs / 60000).toFixed(1)}分钟`);
-      logger.timeDebug('[tencent] 耗时');
-      const danmus = await fetchTencentDanmaku(vid, durMs);
-      logger.timeEndDebug('[tencent] 耗时');
-      logger.info(`[tencent] 完成，共 ${danmus.length} 条`);
+      logger.info(`[tencent] 多VID拼接: ${vids.join(', ')}`);
+      logger.timeDebug('[tencent] 多VID耗时');
 
-      const result = { source: 'qq', id: vid, count: danmus.length, danmus };
+      const allDanmus = [];
+      let prevEffectiveEnd = 0; // 上一段有效内容的结束时间（合并时间轴）
+
+      for (let i = 0; i < vids.length; i++) {
+        const vid = vids[i];
+        const durMs = 7200000; // 2h 充裕时长
+        logger.info(`[tencent] 抓取 VID ${i+1}/${vids.length}: ${vid}`);
+        const raw = await fetchTencentDanmaku(vid, durMs, qqCookie);
+
+        if (raw.length === 0) {
+          logger.warn(`[tencent] VID ${vid} 无弹幕，跳过`);
+          continue;
+        }
+
+        const lastTime = raw[raw.length - 1].time;
+        const trimEnd = i < vids.length - 1 ? TRIM : 0;
+        const trimStart = i > 0 ? TRIM : 0;
+        logger.info(`[tencent] VID ${vid}: ${raw.length}条, ~${Math.round(lastTime)}s, 裁头${trimStart}s 裁尾${trimEnd}s`);
+
+        let filtered = raw;
+        if (trimEnd > 0) filtered = filtered.filter(d => d.time <= lastTime - trimEnd);
+        if (trimStart > 0) filtered = filtered.filter(d => d.time >= trimStart);
+
+        const offset = i > 0 ? prevEffectiveEnd - trimStart : 0;
+        if (offset > 0) {
+          filtered = filtered.map(d => ({ ...d, time: d.time + offset }));
+        }
+
+        allDanmus.push(...filtered);
+
+        const effectiveEnd = (lastTime - trimEnd) + offset;
+        prevEffectiveEnd = effectiveEnd;
+        logger.info(`[tencent] VID ${vid} 处理后: ${filtered.length}条, 结束于 ~${Math.round(effectiveEnd)}s`);
+      }
+
+      logger.timeEndDebug('[tencent] 多VID耗时');
+      logger.info(`[tencent] 合并完成: ${allDanmus.length} 条弹幕, 总时长 ~${Math.round(prevEffectiveEnd)}s`);
+
+      const result = { source: 'qq', id: vids.join(','), count: allDanmus.length, danmus: allDanmus };
       backupCache(cacheFile);
       fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
       return res.json(success(result));
@@ -254,7 +343,32 @@ router.get('/danmaku', async (req, res) => {
       return res.json(success({ source: 'txsp', id: `${roomId}_${programId}`, count: danmus.length, danmus, maxSeq, cursor: nextCursor, pullInterval }));
     }
 
-    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango, zhibo8, txsp'));
+    // 爱奇艺
+    if (source === 'iqiyi') {
+      if (!id || !/^\d{16}$/.test(String(id).trim())) {
+        return res.status(400).json(fail(400, '爱奇艺源需要 16 位 tvid'));
+      }
+      const tvid = String(id).trim();
+      const forceRefresh = req.query.refresh === '1';
+      const cacheFile = path.join(DANMU_DIR, `iqiyi_${tvid}.json`);
+
+      if (!forceRefresh && fs.existsSync(cacheFile)) {
+        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+        return res.json(success({ ...cached, fromCache: true }));
+      }
+
+      logger.info(`[aiqiyi] 抓取弹幕 tvid: ${tvid}`);
+      logger.timeDebug('[aiqiyi] 耗时');
+      const danmus = await fetchAiQiYiDanmaku(tvid);
+      logger.timeEndDebug('[aiqiyi] 耗时');
+
+      const result = { source: 'iqiyi', id: tvid, count: danmus.length, danmus };
+      backupCache(cacheFile);
+      fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
+      return res.json(success(result));
+    }
+
+    return res.status(400).json(fail(400, '不支持的弹幕源，可选: bili, qq, mango, zhibo8, txsp, iqiyi'));
   } catch (err) {
     logger.error(`[${req.query.source}] 弹幕请求失败:`, err.message);
     const { id, source } = req.query;

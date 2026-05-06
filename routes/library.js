@@ -4,6 +4,7 @@ const { success, fail } = require('../utils/response');
 const { isVideoExt } = require('../utils/file');
 const { sanitizeFileName, extractEpisodeNumberFromFileName, extractEpId } = require('../utils/video');
 const { fetchSeasonInfo } = require('../services/bilibili');
+const axios = require('axios');
 const logger = require('../utils/logger');
 const { FOLDERS_BASE } = require('../shared/constants');
 const {
@@ -112,6 +113,61 @@ router.post('/rename', async (req, res) => {
 
     fs.writeFileSync(path.join(safeFolderPath, 'mapping.json'), JSON.stringify(renamedFiles, null, 2));
     res.json(success({ seasonTitle, totalFiles: renamedFiles.length, renamedFiles }));
+  } catch (err) {
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, err.message || '重命名失败'));
+  }
+});
+
+// POST /api/rename/iqiyi
+router.post('/rename/iqiyi', async (req, res) => {
+  try {
+    const { folderPath, tvid } = req.body || {};
+    if (!folderPath || !tvid) return res.status(400).json(fail(400, '缺少文件夹路径或 tvid'));
+
+    const safeFolder = resolveLibraryDirectory(folderPath);
+
+    // 查 albumId
+    const infoUrl = `https://pcw-api.iqiyi.com/video/video/baseinfo/${tvid}`;
+    const infoResp = await axios.get(infoUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 });
+    const albumId = infoResp.data?.data?.albumId;
+    if (!albumId) return res.status(400).json(fail(400, '未找到 albumId'));
+
+    // 查整季列表
+    const albumUrl = `https://pcw-api.iqiyi.com/albums/album/avlistinfo?aid=${albumId}&page=1&size=50`;
+    const albumResp = await axios.get(albumUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 });
+    const episodes = albumResp.data?.data?.epsodelist || [];
+
+    // order → tvId 映射
+    const epMap = {};
+    for (const ep of episodes) {
+      epMap[Number(ep.order)] = String(ep.tvId || '');
+    }
+    logger.info(`[iqiyi-rename] albumId=${albumId} ${episodes.length}集`);
+
+    // 扫描文件夹
+    const videoExts = new Set(['.mp4', '.mkv', '.mov', '.webm', '.avi', '.m4v']);
+    const files = fs.readdirSync(safeFolder).filter(f => videoExts.has(path.extname(f).toLowerCase()));
+
+    const renamedFiles = [];
+    for (const fname of files) {
+      const ext = path.extname(fname);
+      const base = path.basename(fname, ext);
+
+      // 已含 16 位 tvid，跳过
+      if (/\d{16}/.test(base)) continue;
+
+      const epNum = extractEpisodeNumberFromFileName(fname);
+      if (epNum == null || !epMap[epNum]) continue;
+
+      const tvId = epMap[epNum];
+      const newName = `${base}_${tvId}${ext}`;
+      fs.renameSync(path.join(safeFolder, fname), path.join(safeFolder, newName));
+      renamedFiles.push({ oldName: fname, newName, episode: epNum, tvId });
+    }
+
+    res.json(success({ albumId, totalEpisodes: episodes.length, renamedFiles }));
   } catch (err) {
     const status = isPathValidationError(err) ? 400 : 500;
     if (status === 500) logger.error(err);
