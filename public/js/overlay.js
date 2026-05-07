@@ -423,7 +423,7 @@
 
   function resetHideTimer() {
     clearHideTimer();
-    hideTimer = setTimeout(hidePanel, 20000);
+    hideTimer = setTimeout(hidePanel, 10000);
   }
 
   function clearHideTimer() {
@@ -1069,12 +1069,12 @@
   if (window.electronAPI) {
     showPanel();
     fadeIndicator();
-    setTimeout(hidePanel, 20000);
+    setTimeout(hidePanel, 10000);
   } else {
     // In browser mode, show panel by default too
     showPanel();
     fadeIndicator();
-    setTimeout(hidePanel, 20000);
+    setTimeout(hidePanel, 10000);
   }
 
   // 面板打开时红点变淡，隐藏时红点亮起（方便找到它）
