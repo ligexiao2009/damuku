@@ -81,13 +81,19 @@ function parseCardList(cardList) {
     title: '',
     description: '',
     poster: '',
+    verticalPoster: '',
     year: '',
     area: '',
     genres: [],
+    plotTags: '',
     episodeAll: 0,
     hotval: '',
     score: '',
     doubanScore: '',
+    imdbId: '',
+    broadcastTime: '',
+    cast: [],
+    directors: [],
     episodes: [],
   };
 
@@ -101,22 +107,53 @@ function parseCardList(cardList) {
         result.title = params.title || result.title;
         result.description = params.cover_description || result.description;
         result.poster = params.new_pic_hz || result.poster;
+        result.verticalPoster = params.new_pic_vt || result.verticalPoster;
         result.year = params.year || result.year;
         result.area = params.area_name || result.area;
         result.episodeAll = parseInt(params.episode_all, 10) || result.episodeAll;
         result.hotval = params.hotval || result.hotval;
+        result.broadcastTime = params.broadcast_time || result.broadcastTime;
+
         const mainGenre = params.main_genres;
         if (mainGenre) result.genres.push(mainGenre);
         const subGenres = (params.sub_genre || '').split(',').filter(Boolean);
         result.genres.push(...subGenres);
-        // 去重
         result.genres = [...new Set(result.genres)];
 
         try {
           const si = JSON.parse(params.score_info || '{}');
-          result.score = si.video_score || '';
-          result.doubanScore = si.douban_score || '';
+          result.score = si.video_score || result.score || '';
+          result.doubanScore = si.douban_score || result.doubanScore || '';
+          result.imdbId = si.imdb_id || result.imdbId || '';
         } catch {}
+
+        try {
+          const mi = JSON.parse(params.matrix_infos || '{}');
+          result.plotTags = mi.plot_point_info || result.plotTags || '';
+        } catch {}
+      }
+
+      // --- 演员 & 导演 ---
+      if (ctype === 'pad_star_introduction') {
+        for (const ck of Object.keys(card.children_list || {})) {
+          for (const sc of (card.children_list[ck].cards || [])) {
+            const p = sc.params || {};
+            const name = p.star_name;
+            const label = p.star_role_label || '';
+            if (!name) continue;
+            const person = { name, avatar: p.star_pic || '' };
+            if (label.includes('导演')) {
+              person.role = label;
+              result.directors.push(person);
+            } else if (label.includes('编剧')) {
+              person.role = label;
+              if (!result.directors.find(d => d.name === name)) result.directors.push(person);
+            } else if (label.startsWith('饰')) {
+              person.role = label.replace(/^饰\s*/, '');
+              result.cast.push(person);
+            }
+          }
+        }
       }
 
       // --- 评分 ---

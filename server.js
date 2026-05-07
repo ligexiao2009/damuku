@@ -51,6 +51,7 @@ app.get('/', (_req, res) => res.redirect('/video.html'));
 app.get('/ipad', (_req, res) => res.redirect('/ipad.html'));
 app.get('/manage', (_req, res) => res.redirect('/manage.html'));
 app.get('/rename', (_req, res) => res.redirect('/rename.html'));
+app.get('/library', (_req, res) => res.redirect('/library.html'));
 
 // 视频流直链（非 API，挂载在根路径）
 app.get('/video/:name', (req, res) => {
@@ -86,6 +87,7 @@ app.use('/api', require('./routes/video'));
 app.use('/api', require('./routes/library'));
 app.use('/api', require('./routes/progress'));
 app.use('/api', require('./routes/convert'));
+app.use('/api', require('./routes/library_info'));
 app.use('/api', require('./routes/manage'));
 app.use('/api', require('./routes/config'));
 

@@ -22,7 +22,17 @@ def mpv_command(*args):
             if b"\n" in chunk: break
         sock.close()
         return json.loads(resp.decode().strip())
-    except Exception:
+    except FileNotFoundError:
+        return None
+    except ConnectionRefusedError:
+        return None
+    except Exception as e:
+        # 连接失败（僵尸 socket）就删掉，让主循环能检测到 IINA 已退出
+        if isinstance(e, OSError):
+            try:
+                os.unlink(SOCKET_PATH)
+            except Exception:
+                pass
         return None
 
 

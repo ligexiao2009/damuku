@@ -59,6 +59,7 @@ def parse_cards(card_list):
         "hotval": "",
         "score": "",
         "douban_score": "",
+        "imdb_id": "",
         "episodes": [],
     }
 
@@ -88,6 +89,7 @@ def parse_cards(card_list):
                     si = json.loads(params.get("score_info", "{}"))
                     result["score"] = si.get("video_score") or result["score"]
                     result["douban_score"] = si.get("douban_score") or result["douban_score"]
+                    result["imdb_id"] = si.get("imdb_id") or result["imdb_id"]
                 except (json.JSONDecodeError, TypeError):
                     pass
 
@@ -122,6 +124,7 @@ def print_detail(d):
     print(f"年份: {d['year']}  地区: {d['area']}  类型: {' / '.join(d['genres'])}")
     print(f"集数: {d['episode_all']}  热度: {d['hotval']}")
     print(f"评分: 腾讯 {d['score']}  豆瓣 {d['douban_score']}")
+    print(f"IMDb: {d['imdb_id']}")
     print(f"封面: {d['poster']}")
     print(f"简介: {d['description'][:200]}...")
     print(f"\n分集列表 ({len(d['episodes'])} 集):")
