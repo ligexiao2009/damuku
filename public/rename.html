@@ -6,129 +6,161 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>剧集批量重命名工具</title>
   <style>
+    :root {
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+      --font-family: 'Inter', system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: white;
-      padding: 30px;
-      max-width: 900px;
-      margin: auto;
+      font-family: var(--font-family);
+      background: var(--bg);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 40px 20px;
+      max-width: 800px;
+      margin: 0 auto;
     }
 
-    h1 {
-      text-align: center;
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
     }
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-title svg { width: 24px; height: 24px; color: var(--primary); }
+    .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .home-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; font-size: 13px; font-weight: 500;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-main);
+      cursor: pointer; box-shadow: var(--shadow-sm);
+      transition: all 0.2s ease; text-decoration: none;
+    }
+    .home-btn:hover { background: var(--bg); border-color: #cbd5e1; }
+    .home-btn svg { width: 16px; height: 16px; }
 
     .card {
-      background: #1e1e1e;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      border: 1px solid rgba(255,255,255,0.5);
+      padding: 24px;
     }
+    .card + .card { margin-top: 20px; }
+    .card h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 
     label {
       display: block;
-      margin-top: 15px;
-      margin-bottom: 8px;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      font-size: 13px; font-weight: 500; color: var(--text-main);
     }
-
     input, select {
-      width: 100%;
-      padding: 12px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      background: #2b2f3a;
-      color: white;
-      box-sizing: border-box;
+      width: 100%; padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-family: var(--font-family);
+      background: var(--surface); color: var(--text-main);
+      transition: border-color 0.2s; box-shadow: var(--shadow-sm);
     }
+    input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+    input::placeholder { color: var(--text-muted); }
 
     .row {
       display: grid;
       grid-template-columns: 1fr 200px;
       gap: 10px;
-      align-items: center;
+      align-items: start;
     }
 
-    button {
-      margin-top: 20px;
-      width: 100%;
-      padding: 14px;
-      border: none;
-      border-radius: 10px;
-      background: #ff6699;
-      color: white;
-      font-size: 16px;
-      cursor: pointer;
+    button.action {
+      margin-top: 18px; width: 100%; padding: 12px;
+      border: none; border-radius: var(--radius-sm);
+      background: var(--primary); color: white;
+      font-size: 14px; font-weight: 600; font-family: var(--font-family);
+      cursor: pointer; transition: background 0.2s, transform 0.1s; box-shadow: var(--shadow-sm);
     }
-
-    button:hover {
-      opacity: 0.9;
-    }
+    button.action:hover { background: var(--primary-hover); }
+    button.action:active { transform: scale(0.98); }
 
     pre {
-      background: black;
-      padding: 15px;
-      border-radius: 10px;
+      background: #f1f5f9;
+      padding: 14px;
+      border-radius: var(--radius-sm);
       overflow-x: auto;
       white-space: pre-wrap;
-      margin-top: 20px;
+      margin-top: 18px;
+      font-size: 12px; color: var(--text-muted);
+      border: 1px solid var(--border);
     }
 
     .hint {
-      margin-top: 8px;
-      color: #aaa;
+      margin-top: 6px;
+      color: var(--text-muted);
       font-size: 12px;
       line-height: 1.5;
-    }
-
-    .secondary-btn {
-      margin-top: 0;
-      width: 100%;
-      background: #2b2f3a;
-    }
-
-    .card + .card {
-      margin-top: 20px;
     }
 
     .status-bar-inline {
       margin-top: 12px;
       padding: 10px 14px;
-      background: #2b2f3a;
-      border-radius: 8px;
+      background: #f1f5f9;
+      border-radius: var(--radius-sm);
       font-size: 13px;
-      line-height: 1.5;
-      min-height: 20px;
     }
-
-    .status-bar-inline .done { color: #4ade80; }
-    .status-bar-inline .error { color: #f87171; }
-    .status-bar-inline .running { color: #facc15; }
+    .status-bar-inline .done { color: #16a34a; }
+    .status-bar-inline .error { color: #ef4444; }
+    .status-bar-inline .running { color: #d97706; }
 
     .progress-wrap {
       margin-top: 8px;
       height: 6px;
-      background: #2b2f3a;
+      background: var(--border);
       border-radius: 3px;
       overflow: hidden;
     }
-
     .progress-bar {
       height: 100%;
-      background: linear-gradient(135deg, #22c55e, #16a34a);
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
       border-radius: 3px;
       transition: width 0.5s ease;
+    }
+
+    @media (max-width: 540px) {
+      body { padding: 20px 12px; }
+      .card { padding: 16px; }
+      .row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 
 <body>
-  <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap;">
-    <h1 style="margin:0;">剧集批量重命名工具</h1>
-    <button onclick="location.href='/video.html'" style="margin:0; width:auto; padding:8px 14px; font-size:14px; background:#2b2f3a; line-height:1;" title="主页">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12L12 3l9 9"/><path d="M5 10v11h14V10"/><path d="M9 21V13h6v8"/></svg>
-    </button>
+  <div class="header">
+    <div class="header-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+      <h1>剧集批量重命名工具</h1>
+    </div>
+    <a href="/" class="home-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12L12 3l9 9"/><path d="M5 10v11h14V10"/><path d="M9 21V13h6v8"/></svg>
+      首页
+    </a>
   </div>
 
   <div class="card">
@@ -144,7 +176,7 @@
     <label>B站任意剧集链接（ep链接）</label>
     <input type="text" id="biliUrl" placeholder="例如 https://www.bilibili.com/bangumi/play/ep473314">
 
-    <button id="renameBtn">开始批量重命名</button>
+    <button id="renameBtn" class="action">开始批量重命名</button>
 
     <pre id="result">等待操作...</pre>
   </div>
@@ -152,13 +184,18 @@
   <div class="card">
     <h2 style="margin:0 0 8px; font-size:18px;">爱奇艺批量重命名</h2>
     <label>本地视频文件夹路径</label>
-    <input type="text" id="iqiyiFolderPath" placeholder="例如 /Users/yang/video/低智商犯罪" onchange="document.getElementById('iqiyiFolderSelect').value=''">
-    <div class="hint">从右侧下拉框选择服务器目录可自动填入路径，也可手动输入。</div>
+    <div class="row">
+      <input type="text" id="iqiyiFolderPath" placeholder="例如 /Users/yang/video/低智商犯罪" onchange="document.getElementById('iqiyiFolderSelect').value=''">
+      <select id="iqiyiFolderSelect">
+        <option value="">-- 选择服务器目录 --</option>
+      </select>
+    </div>
+    <div class="hint">选择服务器目录可自动填入路径并扫描 tvid。</div>
 
     <label>任意一集的 tvid（9-16位数字）</label>
     <input type="text" id="iqiyiTvid" placeholder="例如 103405000">
 
-    <button id="iqiyiRenameBtn">开始批量重命名</button>
+    <button id="iqiyiRenameBtn" class="action">开始批量重命名</button>
     <pre id="iqiyiResult">等待操作...</pre>
   </div>
 
@@ -173,7 +210,7 @@
     </div>
     <div class="hint">从右侧下拉框选择视频文件自动填入路径。输出文件在同目录下，文件名加 _browser.mp4 后缀。</div>
 
-    <button id="convertBtn">开始转换</button>
+    <button id="convertBtn" class="action">开始转换</button>
     <div class="status-bar-inline" id="convertStatus" style="display:none;"></div>
   </div>
 
@@ -365,10 +402,7 @@
     const iqiyiTvid = document.getElementById('iqiyiTvid');
 
     // 文件夹下拉同步到爱奇艺输入框
-    const iqiyiFolderSelect = document.createElement('select');
-    iqiyiFolderSelect.style.cssText = 'margin-top:6px;width:100%;padding:10px;border:none;border-radius:8px;font-size:14px;background:#2b2f3a;color:#aaa;';
-    iqiyiFolderSelect.innerHTML = '<option value="">-- 选择服务器目录 --</option>';
-    iqiyiFolderPath.parentNode.insertBefore(iqiyiFolderSelect, iqiyiFolderPath.nextSibling);
+    const iqiyiFolderSelect = document.getElementById('iqiyiFolderSelect');
     (async () => {
       try {
         const folders = await api('/api/folders');
@@ -386,8 +420,9 @@
           const m = f.name.match(/\d{9,16}/);
           if (m) {
             iqiyiTvid.value = m[0];
-            iqiyiTvid.style.background = '#1a3a1a';
-            setTimeout(() => { iqiyiTvid.style.background = ''; }, 2000);
+            iqiyiTvid.style.background = '#fee2e2';
+            iqiyiTvid.style.borderColor = '#ef4444';
+            setTimeout(() => { iqiyiTvid.style.background = ''; iqiyiTvid.style.borderColor = ''; }, 2000);
             break;
           }
         }

@@ -110,4 +110,20 @@ router.put('/manage/retention', (req, res) => {
   }
 });
 
+// POST /api/manage/play — IINA 播放
+router.post('/manage/play', (req, res) => {
+  try {
+    const { filePath } = req.body || {};
+    if (!filePath) return res.status(400).json(fail(400, '缺少文件路径'));
+    const resolved = resolvePathInside(filePath, FOLDERS_BASE);
+    if (!fs.existsSync(resolved)) return res.status(404).json(fail(404, '文件不存在'));
+    require('child_process').exec(`open -a IINA "${resolved}"`, (err) => {
+      if (err) return res.status(500).json(fail(500, '启动 IINA 失败'));
+      res.json(success({ file: path.basename(resolved) }));
+    });
+  } catch (err) {
+    res.status(400).json(fail(400, err.message));
+  }
+});
+
 module.exports = router;

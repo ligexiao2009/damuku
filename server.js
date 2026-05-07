@@ -47,7 +47,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 静态页面重定向
-app.get('/', (_req, res) => res.redirect('/video.html'));
+app.get('/', (_req, res) => res.redirect('/index.html'));
 app.get('/ipad', (_req, res) => res.redirect('/ipad.html'));
 app.get('/manage', (_req, res) => res.redirect('/manage.html'));
 app.get('/rename', (_req, res) => res.redirect('/rename.html'));
