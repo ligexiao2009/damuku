@@ -140,7 +140,8 @@
       position: sticky; top: 0; float: right;
       width: 32px; height: 32px; border: none; border-radius: 8px;
       background: rgba(255,255,255,0.08); color: var(--text);
-      font-size: 14px; cursor: pointer; z-index: 1; margin-right: 8px;
+      cursor: pointer; z-index: 1; margin-right: 8px;
+      display: inline-flex; align-items: center; justify-content: center;
     }
     .overlay-panel .refresh-detail-btn:hover { background: var(--accent); }
     .overlay-panel .detail-poster {
@@ -193,7 +194,12 @@
       background: rgba(255,255,255,0.04); object-fit: cover;
       margin-bottom: 4px; display: block;
     }
-    .overlay-panel .file-list { font-size: 12px; color: var(--muted); line-height: 1.6; }
+    .overlay-panel .file-list { font-size: 12px; line-height: 1.6; }
+    .overlay-panel .file-link {
+      color: var(--accent); cursor: pointer; text-decoration: none;
+      display: inline;
+    }
+    .overlay-panel .file-link:hover { text-decoration: underline; }
 
     .empty { text-align: center; padding: 60px 20px; color: var(--muted); font-size: 14px; }
     .loading { text-align: center; padding: 40px; color: var(--muted); }
@@ -228,7 +234,9 @@
     <div class="overlay-bg" id="overlayBg"></div>
     <div class="overlay-panel" id="overlayPanel">
       <button class="close-btn" id="closeBtn">✕</button>
-      <button class="refresh-detail-btn" id="refreshDetailBtn" title="强制刷新">🔄</button>
+      <button class="refresh-detail-btn" id="refreshDetailBtn" title="强制刷新">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.36-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.36 3.36L1 14"/></svg>
+      </button>
       <div id="detailContent"></div>
     </div>
   </div>
@@ -428,7 +436,11 @@
 
       if (d.localFiles && d.localFiles.length) {
         html += '<h3>本地文件 (' + d.localFiles.length + ')</h3>';
-        html += '<div class="file-list">' + d.localFiles.map(esc).join('<br>') + '</div>';
+        html += '<div class="file-list">';
+        d.localFiles.forEach(f => {
+          html += '<span class="file-link" onclick="playEpisode(\'' + escAttr(currentDetailFolder) + '\',0,\'' + escAttr(f) + '\')">' + esc(f) + '</span><br>';
+        });
+        html += '</div>';
       }
 
       detailContent.innerHTML = html;
