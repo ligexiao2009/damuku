@@ -87,7 +87,13 @@
         <span style="font-size:10px;color:#666;">拖拽移动 · 双击归位</span>
       </div>
 
-      <!-- 新增：直播流地址输入 -->
+      <!-- 网页地址提取直播流 -->
+      <div class="panel-row live-input-row">
+        <input type="text" id="sniffUrl" placeholder="网页地址，自动提取直播流..." style="flex:1;">
+        <button id="sniff-btn" style="background:#6366f1; color:white;">提取</button>
+      </div>
+      <div id="sniff-status" style="font-size:10px;color:#666;padding:0 4px;display:none;"></div>
+      <!-- 直播流地址输入 -->
       <div class="panel-row live-input-row">
         <input type="text" id="streamUrl" placeholder="输入 M3U8 直播地址..." style="flex:1;">
         <button id="paste-stream-btn" title="粘贴直播地址">📋</button>
@@ -203,6 +209,9 @@
     const video = document.getElementById('video-background');
     const streamInput = document.getElementById('streamUrl');
     const liveLoadBtn = document.getElementById('live-load-btn');
+    const sniffInput = document.getElementById('sniffUrl');
+    const sniffBtn = document.getElementById('sniff-btn');
+    const sniffStatus = document.getElementById('sniff-status');
     const fullScreenBtn = document.getElementById('full-screen-btn');
     const appContainer = document.getElementById('app-container');
     const statusText = document.getElementById('status-text');
@@ -279,6 +288,33 @@
     });
 
     liveLoadBtn.onclick = loadStream;
+
+    sniffBtn.onclick = async () => {
+      const pageUrl = sniffInput.value.trim();
+      if (!pageUrl) return;
+      sniffBtn.disabled = true;
+      sniffBtn.textContent = '提取中...';
+      sniffStatus.style.display = 'block';
+      sniffStatus.textContent = '正在打开页面...';
+      try {
+        const res = await fetch('/api/stream/sniff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageUrl })
+        });
+        const json = await res.json();
+        if (json.code === 0) {
+          streamInput.value = json.data.streamUrl;
+          sniffStatus.innerHTML = '<span style=color:#4ade80>已提取 (' + json.data.method + ')</span>';
+        } else {
+          sniffStatus.innerHTML = '<span style=color:#f87171>' + json.message + '</span>';
+        }
+      } catch (err) {
+        sniffStatus.innerHTML = '<span style=color:#f87171>提取失败</span>';
+      }
+      sniffBtn.disabled = false;
+      sniffBtn.textContent = '提取';
+    };
     fullScreenBtn.onclick = toggleFullscreen;
 
     // 默认加载 test.html 里的测试流 (可选)

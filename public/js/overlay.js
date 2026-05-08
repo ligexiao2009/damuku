@@ -91,6 +91,8 @@
       engine.configure(cfg);
       syncControlsFromEngine();
       if (cfg.lastFolder) lastFolder = cfg.lastFolder;
+      if (cfg.txspRoomId) txspRoomId.value = cfg.txspRoomId;
+      if (cfg.txspProgramId) txspProgramId.value = cfg.txspProgramId;
       // 恢复红点位置
       if (cfg.indicatorLeft && cfg.indicatorTop) {
         statusIndicator.style.right = 'auto';
@@ -107,6 +109,8 @@
     try {
       const cfg = engine.getConfig();
       cfg.lastFolder = lastFolder;
+      cfg.txspRoomId = txspRoomId.value.trim();
+      cfg.txspProgramId = txspProgramId.value.trim();
       // 保存红点位置
       var left = statusIndicator.style.left;
       var top = statusIndicator.style.top;
@@ -245,6 +249,7 @@
       currentBvid = `${roomId}_${programId}`;
       txspLastSeq = 0;
       txspCursor = '';
+      saveConfig();
 
       const poll = async () => {
         try {
