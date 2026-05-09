@@ -175,4 +175,60 @@ router.post('/rename/iqiyi', async (req, res) => {
   }
 });
 
+// POST /api/rename/tencent — 腾讯视频批量重命名
+router.post('/rename/tencent', async (req, res) => {
+  try {
+    const { folderPath, cidOrVid } = req.body || {};
+    if (!folderPath || !cidOrVid) return res.status(400).json(fail(400, '缺少参数'));
+
+    const safeFolder = resolveLibraryDirectory(folderPath);
+    const { fetchTencentVideoDetail, fetchCidByVid } = require('../services/tencent_detail');
+
+    let cid = cidOrVid, vid = '';
+    // 判断是 cid 还是 vid：cid 以 mzc 或 mcv 开头
+    if (!/^m[zc]/.test(cidOrVid) && /^[a-z][a-z0-9]{9,11}$/i.test(cidOrVid)) {
+      vid = cidOrVid;
+      cid = await fetchCidByVid(vid);
+      if (!cid) return res.status(400).json(fail(400, '未找到对应 cid，请检查 vid 是否正确'));
+    }
+
+    const detail = await fetchTencentVideoDetail(cid, vid);
+    if (!detail || !detail.episodes.length) return res.status(400).json(fail(400, '未获取到剧集信息'));
+
+    // 扫描文件夹
+    const videoExts = new Set(['.mp4', '.mkv', '.mov', '.webm', '.avi', '.m4v']);
+    const files = fs.readdirSync(safeFolder).filter(f => videoExts.has(path.extname(f).toLowerCase()));
+
+    // 构建集号 → vid 的映射
+    const epMap = {};
+    for (const ep of detail.episodes) {
+      const num = ep.episode || parseInt(ep.title, 10) || 0;
+      if (num > 0) epMap[num] = ep.vid;
+    }
+
+    const renamedFiles = [];
+    for (const fname of files) {
+      const ext = path.extname(fname);
+      const base = path.basename(fname, ext);
+
+      // 已含 vid，跳过
+      if (/[a-z][a-z0-9]{9,11}/i.test(base)) continue;
+
+      const epNum = extractEpisodeNumberFromFileName(fname);
+      if (epNum == null || !epMap[epNum]) continue;
+
+      const vidVal = epMap[epNum];
+      const newName = base + '_' + vidVal + ext;
+      fs.renameSync(path.join(safeFolder, fname), path.join(safeFolder, newName));
+      renamedFiles.push({ oldName: fname, newName, episode: epNum, vid: vidVal });
+    }
+
+    res.json(success({ cid, totalEpisodes: detail.episodes.length, renamedFiles }));
+  } catch (err) {
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, err.message || '重命名失败'));
+  }
+});
+
 module.exports = router;
