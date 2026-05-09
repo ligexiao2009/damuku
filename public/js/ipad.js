@@ -481,6 +481,20 @@
 
   (async () => {
     await loadSettings();
+    // txsp 自动加载：检查是否有书签提取的数据
+    try {
+      var saved = await api(`${SERVER}/api/txsp/saved`);
+      if (saved && saved.roomId && saved.programId) {
+        sourceSelect.value = 'txsp';
+        sourceSelect.dispatchEvent(new Event('change'));
+        txspRoomId.value = saved.roomId;
+        txspProgramId.value = saved.programId;
+        if (saved.cookie) txspCookie = saved.cookie;
+        loadDanmaku(`${saved.roomId}_${saved.programId}`);
+        console.log('[txsp] auto-loaded from bookmarklet');
+        return;
+      }
+    } catch {}
     if (sourceSelect) sourceSelect.dispatchEvent(new Event('change'));
     setStatus('就绪 — 输入比赛ID，点击加载弹幕（设置已同步）');
   })();

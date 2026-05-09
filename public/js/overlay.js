@@ -527,6 +527,20 @@
     if (name) {
       bvidInput.value = getVideoIdForSource(name, src);
     }
+    // txsp 自动加载保存的数据
+    if (isTxsp) {
+      (async () => {
+        try {
+          var saved = await api(`${SERVER}/api/txsp/saved`);
+          if (saved && saved.roomId && saved.programId) {
+            txspRoomId.value = saved.roomId;
+            txspProgramId.value = saved.programId;
+            if (saved.cookie) txspCookie = saved.cookie;
+            loadDanmaku(`${saved.roomId}_${saved.programId}`);
+          }
+        } catch {}
+      })();
+    }
   });
 
   playPauseBtn.addEventListener('click', () => {
@@ -1066,9 +1080,22 @@
   (async () => {
     await loadConfig();
     await loadFolders();
+    // txsp 自动加载：检查书签提取的数据
+    try {
+      var saved = await api(`${SERVER}/api/txsp/saved`);
+      if (saved && saved.roomId && saved.programId) {
+        sourceSelect.value = 'txsp';
+        sourceSelect.dispatchEvent(new Event('change'));
+        txspRoomId.value = saved.roomId;
+        txspProgramId.value = saved.programId;
+        if (saved.cookie) txspCookie = saved.cookie;
+        loadDanmaku(`${saved.roomId}_${saved.programId}`);
+        console.log('[txsp] auto-loaded from bookmarklet');
+        return;
+      }
+    } catch {}
+    setStatus('就绪 — 按 Space 开始/暂停, O 打开控制面板, ← → 微调时间');
   })();
-
-  setStatus('就绪 — 按 Space 开始/暂停, O 打开控制面板, ← → 微调时间');
 
   // Auto-show panel on first launch so user knows overlay is running
   if (window.electronAPI) {

@@ -115,6 +115,7 @@
         if (json.code === 0) {
           input.value = json.data.streamUrl;
           sniffResult.innerHTML = '<span style=color:#16a34a>已提取 (' + json.data.method + ')</span>';
+          if (location.search.includes('sniff=')) playBtn.click();
         } else {
           sniffResult.innerHTML = '<span style=color:#ef4444>' + json.message + '</span>';
         }
@@ -151,6 +152,8 @@
           txspOutput.style.display = 'block';
           txspCopyBtn.style.display = 'block';
           txspResult.innerHTML = '<span style=color:#16a34a>已提取 ✓</span>';
+          // 同时存到服务器，overlay/ipad 打开时自动加载
+          fetch('/api/txsp/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: d.roomId, programId: d.programId, cookie: d.cookie }) }).catch(() => {});
         } else {
           txspResult.innerHTML = '<span style=color:#ef4444>提取失败: ' + (json.message || '') + '</span>';
         }
@@ -183,6 +186,23 @@
     input.addEventListener('keydown', e => { if (e.key === 'Enter') playBtn.click(); });
 
     renderHistory();
+
+    // URL 参数自动触发: ?sniff=URL 或 ?txsp=URL
+    (function() {
+      var q = new URLSearchParams(location.search);
+      var sniffUrl = q.get('sniff');
+      var txspUrl = q.get('txsp');
+      if (sniffUrl) {
+        var d = decodeURIComponent(sniffUrl);
+        document.getElementById('pageInput').value = d;
+        document.getElementById('sniffBtn').click();
+      }
+      if (txspUrl) {
+        var d = decodeURIComponent(txspUrl);
+        document.getElementById('txspPageUrl').value = d;
+        document.getElementById('txspSniffBtn').click();
+      }
+    })();
   </script>
 </body>
 </html>

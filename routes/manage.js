@@ -330,4 +330,21 @@ router.post('/stream/txsp', async (req, res) => {
   }
 });
 
+// txsp 临时存储
+let txspPending = { roomId: '', programId: '', cookie: '' };
+
+// POST /api/txsp/save — 书签提取后存入
+router.post('/txsp/save', (req, res) => {
+  const { roomId, programId, cookie } = req.body || {};
+  if (!roomId || !programId) return res.status(400).json(fail(400, '缺少参数'));
+  txspPending = { roomId: String(roomId), programId: String(programId), cookie: cookie || '' };
+  logger.info(`[txsp] saved room=${roomId} program=${programId}`);
+  res.json(success({}));
+});
+
+// GET /api/txsp/saved — 控制面板打开时取数据
+router.get('/txsp/saved', (_req, res) => {
+  res.json(success(txspPending));
+});
+
 module.exports = router;
