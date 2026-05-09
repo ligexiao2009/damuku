@@ -255,41 +255,24 @@ router.post('/stream/txsp', async (req, res) => {
           // 等待 SPA 渲染完成后提取
           setTimeout(() => extractData(), 5000);
         }
-        // 监听 XHR 响应（最可靠的方式）
-        if (msg.method === 'Network.responseReceived') {
-          const resp = msg.params.response;
-          if (resp.url.includes('trpc.live_main_logic') || resp.url.includes('getProgram')) {
-            // 拿到 XHR 的 requestId，请求 body
-            ws.send(JSON.stringify({
-              id: 30, method: 'Network.getResponseBody',
-              params: { requestId: msg.params.requestId }
-            }));
+        // 监听 XHR 请求体（bookmarklet 方式：hook send() 看 body）
+        if (msg.method === 'Network.requestWillBeSent') {
+          const req = msg.params.request;
+          if (req.postData) {
+            try {
+              const s = req.postData;
+              const rm = s.match(/"room[_]?id"\s*[:=]\s*"?(\d+)"?/i);
+              const pm = s.match(/"program[_]?id"\s*[:=]\s*"?(\d+)"?/i);
+              if (rm || pm) {
+                ws.send(JSON.stringify({ id: 40, method: 'Runtime.evaluate', params: { expression: 'document.cookie', returnByValue: true } }));
+                const resultData = { roomId: rm ? rm[1] : '', programId: pm ? pm[1] : '', cookie: '' };
+                ws.onmessage = (ev2) => {
+                  const m2 = JSON.parse(ev2.data);
+                  if (m2.id === 40) { resultData.cookie = m2.result?.result?.value || ''; ws.close(); resolve(resultData); }
+                };
+              }
+            } catch {}
           }
-        }
-        // XHR response body
-        if (msg.id === 30 && msg.result) {
-          try {
-            const body = msg.result.body;
-            const data = JSON.parse(body);
-            const s = JSON.stringify(data);
-            const rm = s.match(/"room_?id"\s*[:=]\s*"?(\d+)/i) || s.match(/room_?id['"]?\s*[:=]\s*(\d+)/i);
-            const pm = s.match(/"program_?id"\s*[:=]\s*"?(\d+)/i) || s.match(/program_?id['"]?\s*[:=]\s*['"]?(\d+)/i);
-            if (rm || pm) {
-              ws.send(JSON.stringify({
-                id: 40, method: 'Runtime.evaluate',
-                params: { expression: 'document.cookie', returnByValue: true }
-              }));
-              const resultData = { roomId: rm ? rm[1] : '', programId: pm ? pm[1] : '', cookie: '' };
-              ws.onmessage = (ev2) => {
-                const m2 = JSON.parse(ev2.data);
-                if (m2.id === 40) {
-                  resultData.cookie = m2.result?.result?.value || '';
-                  ws.close();
-                  resolve(resultData);
-                }
-              };
-            }
-          } catch {}
         }
         if (msg.id === 20) {
           try {
@@ -305,15 +288,15 @@ router.post('/stream/txsp', async (req, res) => {
           params: {
             expression: `(function(){
               var r='',p='';
-              // __NUXT__ state
-              if(window.__NUXT__){try{var s=JSON.stringify(window.__NUXT__);var rm=s.match(/"room_?id"\\\\s*[:=]\\\\s*"?(\\\\d+)/i)||s.match(/room_?id['"]?\\\\s*[:=]\\\\s*['"]?(\\\\d+)/i);if(rm)r=rm[1];var pm=s.match(/"program_?id"\\\\s*[:=]\\\\s*"?(\\\\d+)/i)||s.match(/program_?id['"]?\\\\s*[:=]\\\\s*['"]?(\\\\d+)/i);if(pm)p=pm[1]}catch(e){}}
-              // URL 匹配: /live/p/newtopic/366948/index.html
-              var um=location.href.match(/\\\\/live\\\\/p\\\\/\\\\w+\\\\/(\\\\d+)/);if(um&&!p)p=um[1];
-              // 搜 script 内容
-              var scripts=document.querySelectorAll('script');for(var i=0;i<scripts.length;i++){var t=scripts[i].textContent||'';var rm2=t.match(/"room_?id"\\\\s*[:=]\\\\s*"?(\\\\d+)/i);if(rm2&&!r)r=rm2[1];var pm2=t.match(/"program_?id"\\\\s*[:=]\\\\s*"?(\\\\d+)/i);if(pm2&&!p)p=pm2[1]}
-              // window 全局变量
-              try{var w=window.__INITIAL_STATE__||window.store;if(w){var s2=JSON.stringify(w);var rm3=s2.match(/\\\\"room_?id\\\\"\\\\s*:\\\\s*"?(\\\\d+)/i);if(rm3&&!r)r=rm3[1];var pm3=s2.match(/\\\\"program_?id\\\\"\\\\s*:\\\\s*"?(\\\\d+)/i);if(pm3&&!p)p=pm3[1]}}catch(e){}
-              // 当前 cookies
+              // URL 参数
+              var qm=location.search.match(/room[_]?id=(\\\\d+)/i);if(qm)r=qm[1];
+              var um=location.href.match(/\\\\/(\\\\d{7,12})\\\\//);if(um&&!p)p=um[1];
+              // 搜所有含大数字的全局变量
+              Object.keys(window).forEach(function(k){try{var v=window[k];if(typeof v==='object'&&v){var s=JSON.stringify(v);if(s.length<50000){var m=s.match(/\\\\"room[_]?id\\\\"\\\\s*:\\\\s*"?(\\\\d{7,12})"?/i);if(m&&!r)r=m[1];var m2=s.match(/\\\\"program[_]?id\\\\"\\\\s*:\\\\s*"?(\\\\d{4,8})"?/i);if(m2&&!p)p=m2[1]}}}}catch(e){}});
+              // script 标签
+              var ss=document.querySelectorAll('script');for(var i=0;i<ss.length;i++){var t=ss[i].textContent||'';if(!r){var m=t.match(/room[_]?id[^0-9]*(\\\\d{7,12})/i);if(m)r=m[1]}if(!p){var m2=t.match(/program[_]?id[^0-9]*(\\\\d{4,8})/i);if(m2)p=m2[1]}}
+              // 页面 HTML 全文
+              var h=document.documentElement.innerHTML;var mh=h.match(/room[_]?id[^0-9]*(\\\\d{7,12})/i);if(mh&&!r)r=mh[1];
               var ck=document.cookie;
               return JSON.stringify({roomId:r||'',programId:p||'',cookie:ck});
             })()`,
@@ -330,6 +313,12 @@ router.post('/stream/txsp', async (req, res) => {
       const pm = url.match(/\/live\/p\/(?:\w+\/)?(\d{5,})/);
       if (pm) result.programId = pm[1];
     }
+
+    // 关闭标签页
+    try {
+      const t = (await axios.get(`${CDP}/json`)).data.find(x => x.type === 'page' && x.url.includes('v.qq.com'));
+      if (t) await axios.get(`${CDP}/json/close/${t.id}`);
+    } catch {}
 
     if (result.roomId || result.programId) {
       return res.json(success(result));

@@ -133,6 +133,11 @@
     const txspResult = document.getElementById('txspResult');
     const txspOutput = document.getElementById('txspOutput');
     const txspCopyBtn = document.getElementById('txspCopyBtn');
+    // 记住上次输入的网址
+    const TXSP_URL_KEY = 'txsp_url';
+    try { const saved = localStorage.getItem(TXSP_URL_KEY); if (saved) txspPageUrl.value = saved; } catch {}
+    txspPageUrl.addEventListener('input', () => { try { localStorage.setItem(TXSP_URL_KEY, txspPageUrl.value); } catch {} });
+
     txspSniffBtn.addEventListener('click', async () => {
       const url = txspPageUrl.value.trim();
       txspSniffBtn.disabled = true; txspSniffBtn.textContent = '提取中...'; txspResult.textContent = ''; txspOutput.style.display = 'none'; txspCopyBtn.style.display = 'none';
