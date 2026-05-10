@@ -66,6 +66,7 @@
 
   // State
   let isRunning = false;
+  let userPaused = false;
   let simTime = 0;
   let simStartPerf = 0;
   let panelVisible = false;
@@ -223,7 +224,7 @@
               if (d.rawTime) d.ctime = new Date(d.rawTime).getTime() / 1000;
             }
             engine.append(data.danmus);
-            if (!isRunning) startSimulation();
+            if (!isRunning && !userPaused) startSimulation();
             if (data.maxId) zhibo8LastMaxId = data.maxId;
             setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${id}`);
           }
@@ -263,7 +264,7 @@
             const now = getSimulatedTime();
             for (const d of data.danmus) d.time = now;
             engine.append(data.danmus);
-            if (!isRunning) startSimulation();
+            if (!isRunning && !userPaused) startSimulation();
             if (data.maxSeq) txspLastSeq = data.maxSeq;
             if (data.cursor) txspCursor = data.cursor;
             setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${roomId}`);
@@ -321,6 +322,7 @@
   function startSimulation() {
     if (isRunning) return;
     isRunning = true;
+    userPaused = false;
     simStartPerf = performance.now();
     // Only auto-set if user hasn't already jumped somewhere
     if (simTime === 0 && engine.danmus.length > 0) {
@@ -335,6 +337,7 @@
   function pauseSimulation() {
     if (!isRunning) return;
     isRunning = false;
+    userPaused = true;
     simTime = getSimulatedTime();
     engine.pause();
     saveCurrentTime();

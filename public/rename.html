@@ -161,7 +161,31 @@
       idInput.value = '';
     }
 
-    sourceSelect.addEventListener('change', updateSourceUI);
+    async function rescanFolder() {
+      const dir = folderSelect.value;
+      if (!dir) return;
+      const src = sourceSelect.value;
+      if (src === 'iqiyi') {
+        try {
+          const files = await api('/api/video-files?folder=' + encodeURIComponent(dir));
+          for (const f of files) {
+            const m = f.name.match(/\d{9,16}/);
+            if (m) { idInput.value = m[0]; idInput.style.background = '#fee2e2'; idInput.style.borderColor = '#ef4444'; setTimeout(() => { idInput.style.background = ''; idInput.style.borderColor = ''; }, 2000); break; }
+          }
+        } catch {}
+      }
+      if (src === 'tencent') {
+        try {
+          const files = await api('/api/video-files?folder=' + encodeURIComponent(dir));
+          for (const f of files) {
+            const m = f.name.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/i);
+            if (m) { idInput.value = m[1]; idInput.style.background = '#e0e7ff'; idInput.style.borderColor = '#6366f1'; setTimeout(() => { idInput.style.background = ''; idInput.style.borderColor = ''; }, 2000); break; }
+          }
+        } catch {}
+      }
+    }
+
+    sourceSelect.addEventListener('change', () => { updateSourceUI(); rescanFolder(); });
     updateSourceUI();
 
     // 文件夹列表
@@ -178,27 +202,7 @@
       const dir = folderSelect.value;
       if (!dir) return;
       folderPathInput.value = dir;
-      const src = sourceSelect.value;
-      // 爱奇艺：自动扫描 tvid
-      if (src === 'iqiyi') {
-        try {
-          const files = await api('/api/video-files?folder=' + encodeURIComponent(dir));
-          for (const f of files) {
-            const m = f.name.match(/\d{9,16}/);
-            if (m) { idInput.value = m[0]; idInput.style.background = '#fee2e2'; idInput.style.borderColor = '#ef4444'; setTimeout(() => { idInput.style.background = ''; idInput.style.borderColor = ''; }, 2000); break; }
-          }
-        } catch {}
-      }
-      // 腾讯：自动扫描 vid
-      if (src === 'tencent') {
-        try {
-          const files = await api('/api/video-files?folder=' + encodeURIComponent(dir));
-          for (const f of files) {
-            const m = f.name.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/i);
-            if (m) { idInput.value = m[1]; idInput.style.background = '#e0e7ff'; idInput.style.borderColor = '#6366f1'; setTimeout(() => { idInput.style.background = ''; idInput.style.borderColor = ''; }, 2000); break; }
-          }
-        } catch {}
-      }
+      rescanFolder();
     });
     loadFolders();
 
