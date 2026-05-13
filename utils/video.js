@@ -49,6 +49,7 @@ function extractEpisodeNumberFromFileName(fileName) {
     /(?:^|[\s._-])EP?(\d{1,3})(?=$|[\s._-])/i,
     /第\s*(\d{1,3})\s*[集话]/i,
     /^(\d{1,3})$/,
+    /^(\d{1,3})[\s._-]/,
   ];
 
   for (const pattern of patterns) {
