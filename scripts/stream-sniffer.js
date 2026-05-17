@@ -34,8 +34,8 @@ function handleMessage(msg) {
       const ts = new Date().toLocaleTimeString('zh-CN', { hour12: false });
       console.log(`\x1b[32m[${ts}]\x1b[0m ${cu}`);
       if (process.argv[2]) {
-        require('child_process').exec(`echo "${cu.replace(/"/g,'\\"')}" | pbcopy`);
-        console.log('已复制到剪贴板');
+        const copyCmd = process.platform === 'darwin' ? 'pbcopy' : (process.platform === 'linux' ? 'xclip -selection clipboard' : 'clip');
+      require('child_process').exec(`echo "${cu.replace(/"/g,'\\"')}" | ${copyCmd}`);        console.log('已复制到剪贴板');
         setTimeout(() => process.exit(0), 500);
       }
     }
@@ -92,8 +92,15 @@ async function main() {
   catch {
     console.log('启动 Chrome 调试模式...');
     const { spawn } = require('child_process');
-    spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
-      '--remote-debugging-port=9222', '--user-data-dir=/tmp/chrome-debug', '--no-first-run', 'about:blank',
+    const chromePath = process.platform === 'darwin'
+      ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+      : process.platform === 'linux'
+        ? (require('fs').existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome'
+          : require('fs').existsSync('/usr/bin/google-chrome-stable') ? '/usr/bin/google-chrome-stable'
+          : require('fs').existsSync('/usr/bin/chromium-browser') ? '/usr/bin/chromium-browser' : 'google-chrome')
+        : 'google-chrome';
+    spawn(chromePath, [
+      '--remote-debugging-port=9222', '--user-data-dir=/tmp/chrome-debug', '--no-first-run', '--no-sandbox', 'about:blank',
     ], { detached: true, stdio: 'ignore' }).unref();
     await new Promise(r => setTimeout(r, 3000));
     for (let i = 0; i < 10; i++) {
@@ -153,7 +160,10 @@ process.on('SIGINT', () => {
   allSockets.forEach(s => { try { s.close() } catch {} });
   console.log(`\n共捕获 ${found.size} 条流地址`);
   [...found].forEach(u => console.log(u));
-  if (found.size) require('child_process').exec(`echo "${[...found][0]}" | pbcopy`);
+  if (found.size) {
+    const copyCmd = process.platform === 'darwin' ? 'pbcopy' : 'xclip -selection clipboard';
+    require('child_process').exec(`echo "${[...found][0]}" | ${copyCmd}`);
+  }
   process.exit(0);
 });
 

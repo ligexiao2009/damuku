@@ -214,8 +214,15 @@ router.post('/stream/txsp', async (req, res) => {
     try { await axios.get(`${CDP}/json/version`, { timeout: 2000 }); wsReady = true; } catch {}
     if (!wsReady) {
       const { spawn } = require('child_process');
-      spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
-        '--remote-debugging-port=9222', '--user-data-dir=/tmp/chrome-debug', '--no-first-run', 'about:blank',
+      const chromePath = process.platform === 'darwin'
+        ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        : process.platform === 'linux'
+          ? (fs.existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome'
+            : fs.existsSync('/usr/bin/google-chrome-stable') ? '/usr/bin/google-chrome-stable'
+            : fs.existsSync('/usr/bin/chromium-browser') ? '/usr/bin/chromium-browser' : 'google-chrome')
+          : 'google-chrome';
+      spawn(chromePath, [
+        '--remote-debugging-port=9222', '--user-data-dir=/tmp/chrome-debug', '--no-first-run', '--no-sandbox', 'about:blank',
       ], { detached: true, stdio: 'ignore' }).unref();
       await new Promise(r => setTimeout(r, 3000));
       for (let i = 0; i < 10; i++) {
