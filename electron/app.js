@@ -7,6 +7,7 @@ const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { execSync } = require('child_process');
 
 // --- Config: use user-writable directories for packaged app ---
 const isPackaged = app.isPackaged;
@@ -44,6 +45,23 @@ for (const dir of ['cache', 'playback', 'cache/danmu', 'cache/thumbs', 'cache/me
 
 const PORT = process.env.PORT || 3000;
 const serverUrl = `http://localhost:${PORT}`;
+
+// --- Kill any existing process on PORT ---
+function killPortIfOccupied(port) {
+  try {
+    const pid = execSync(`lsof -ti :${port}`, { encoding: 'utf-8' }).trim();
+    if (pid) {
+      console.log(`[app] Port ${port} is occupied by PID ${pid}, killing...`);
+      execSync(`kill -9 ${pid}`);
+      console.log(`[app] Killed PID ${pid}, port ${port} released`);
+    }
+  } catch {
+    // lsof returns non-zero when no process is found — that means port is free
+    console.log(`[app] Port ${port} is free`);
+  }
+}
+
+killPortIfOccupied(PORT);
 
 // --- Start the Express server ---
 let serverStarted = false;
