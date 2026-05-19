@@ -9,7 +9,6 @@ const path = require('path');
 function decodeSafe(fileName) {
   try {
     if (!fileName) return '';
-    let decoded = fileName.replace(/\+/g, ' ');
     while (decoded.includes('%')) {
       const prev = decoded;
       decoded = decodeURIComponent(decoded);
@@ -94,7 +93,7 @@ function resolveExistingVideoPath(relativeName, videoDir) {
 
 /** 判断文件扩展名是否为视频格式。 */
 function isVideoExt(fileName) {
-  return /\.(mp4|mkv|mov|webm|avi|m4v)$/i.test(fileName);
+  return /\.(mp4|mkv|mov|webm|avi|m4v|srt|vtt|ass|ssa)$/i.test(fileName);
 }
 
 /**

@@ -14,6 +14,7 @@ const { CACHE_DIRS, PLAYBACK_DIR, THUMB_DIR, META_DIR, CONVERT_HISTORY_FILE, RET
 const { isPathInside, isVideoExt, decodeSafe, resolveExistingVideoPath } = require('./utils/file');
 const { resolveLibraryDirectory, resolveLibraryVideoFile, isPathValidationError } = require('./shared/helpers');
 const { streamDirect, transcodeStream } = require('./services/ffmpeg');
+const { start: startAutoRename } = require('./services/auto-rename');
 const state = require('./shared/state');
 
 const app = express();
@@ -72,7 +73,7 @@ app.get('/stream', (req, res) => {
     const videoPath = resolveExistingVideoPath(fileName, state.videoDir);
     logger.debug('Streaming video:', videoPath);
     const ext = path.extname(videoPath).toLowerCase();
-    const directPlayable = new Set(['.mov', '.webm', '.m4v', '.mkv', '.mp4', '.m2ts', '.ts', '.avi', '.flv']);
+    const directPlayable = new Set(['.mov', '.webm', '.m4v', '.mkv', '.mp4', '.m2ts', '.ts', '.avi', '.flv', '.srt', '.vtt', '.ass', '.ssa']);
     if (directPlayable.has(ext)) return streamDirect(videoPath, req, res);
     return transcodeStream(videoPath, req, res);
   } catch (err) {
@@ -191,4 +192,5 @@ app.listen(PORT, '0.0.0.0', () => {
   logger.info('服务器已在局域网启动！');
   logger.info(`本机请访问: http://localhost:${PORT}/video.html`);
   logger.info(`iPad访问: http://${localIP}:${PORT}/video.html`);
+  startAutoRename();
 });
