@@ -72,7 +72,7 @@ app.get('/stream', (req, res) => {
     const videoPath = resolveExistingVideoPath(fileName, state.videoDir);
     logger.debug('Streaming video:', videoPath);
     const ext = path.extname(videoPath).toLowerCase();
-    const directPlayable = new Set(['.mp4', '.mov', '.webm', '.m4v']);
+    const directPlayable = new Set(['.mov', '.webm', '.m4v', '.mkv', '.mp4', '.m2ts', '.ts', '.avi', '.flv']);
     if (directPlayable.has(ext)) return streamDirect(videoPath, req, res);
     return transcodeStream(videoPath, req, res);
   } catch (err) {
