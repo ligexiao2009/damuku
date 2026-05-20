@@ -115,7 +115,7 @@ function scanVideos(dir, base = '') {
       continue;
     }
 
-    if (entry.isFile() && isVideoExt(entry.name)) {
+    if (entry.isFile() && !entry.name.startsWith('.') && isVideoExt(entry.name)) {
       results.push(relativePath);
     }
   }

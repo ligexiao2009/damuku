@@ -34,7 +34,7 @@ router.get('/subtitles', (req, res) => {
     const subs = [];
     const entries = fs.readdirSync(state.videoDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isFile() && subtitleExts.has(path.extname(entry.name).toLowerCase())) {
+      if (entry.isFile() && !entry.name.startsWith('.') && subtitleExts.has(path.extname(entry.name).toLowerCase())) {
         subs.push(entry.name);
       }
     }

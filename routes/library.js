@@ -6,7 +6,7 @@ const { sanitizeFileName, extractEpisodeNumberFromFileName, extractEpId } = requ
 const { fetchSeasonInfo } = require('../services/bilibili');
 const axios = require('axios');
 const logger = require('../utils/logger');
-const { FOLDERS_BASE } = require('../shared/constants');
+const { FOLDERS_BASE, FOLDERS_BASES } = require('../shared/constants');
 const {
   resolveLibraryDirectory,
   isPathValidationError,
@@ -20,9 +20,13 @@ const router = require('express').Router();
 // GET /api/folders
 router.get('/folders', (req, res) => {
   try {
-    const allFolders = scanFolders(FOLDERS_BASE);
-    const folders = [{ path: FOLDERS_BASE, name: '(根目录)' }]
-      .concat(allFolders.filter(f => hasDirectVideoFiles(f.path)));
+    let folders = [];
+    for (const base of FOLDERS_BASES) {
+      if (!fs.existsSync(base)) continue;
+      folders.push({ path: base, name: '(根目录)' });
+      const subs = scanFolders(base).filter(f => hasDirectVideoFiles(f.path));
+      folders = folders.concat(subs);
+    }
     res.json(success(folders));
   } catch (err) {
     logger.error(err);

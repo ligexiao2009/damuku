@@ -5,7 +5,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { FOLDERS_BASE } = require('../shared/constants');
+const { FOLDERS_BASES } = require('../shared/constants');
 const { isVideoExt, scanVideos } = require('../utils/file');
 const logger = require('../utils/logger');
 
@@ -68,17 +68,15 @@ function scheduleRename(folderPath) {
   }, 5000)); // 5s debounce
 }
 
-function start() {
-  if (!fs.existsSync(FOLDERS_BASE)) {
-    logger.warn(`[auto-rename] FOLDERS_BASE 不存在: ${FOLDERS_BASE}`);
+function watchBase(base) {
+  if (!fs.existsSync(base)) {
+    logger.warn(`[auto-rename] 路径不存在: ${base}`);
     return;
   }
-
-  // Watch all existing subdirectories
-  const entries = fs.readdirSync(FOLDERS_BASE, { withFileTypes: true });
+  const entries = fs.readdirSync(base, { withFileTypes: true });
   for (const e of entries) {
     if (!e.isDirectory()) continue;
-    const dirPath = path.join(FOLDERS_BASE, e.name);
+    const dirPath = path.join(base, e.name);
     try {
       fs.watch(dirPath, { persistent: false }, (_eventType, fileName) => {
         if (!fileName || !isVideoExt(fileName)) return;
@@ -89,11 +87,10 @@ function start() {
       logger.debug(`[auto-rename] 无法监听 ${dirPath}: ${err.message}`);
     }
   }
-
-  // Also watch FOLDERS_BASE for new subdirectories
-  fs.watch(FOLDERS_BASE, { persistent: false }, (_eventType, name) => {
+  // Watch base for new subdirectories
+  fs.watch(base, { persistent: false }, (_eventType, name) => {
     if (!name) return;
-    const dirPath = path.join(FOLDERS_BASE, name);
+    const dirPath = path.join(base, name);
     if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return;
     try {
       fs.watch(dirPath, { persistent: false }, (_ev, fileName) => {
@@ -103,13 +100,17 @@ function start() {
       logger.info(`👀 [auto-rename] 新增监听: ${dirPath}`);
     } catch {}
   });
-
-  // 初始扫描：已存在的目录也检查一遍
+  // Initial scan
   for (const e of entries) {
     if (!e.isDirectory()) continue;
-    scheduleRename(path.join(FOLDERS_BASE, e.name));
+    scheduleRename(path.join(base, e.name));
   }
+}
 
+function start() {
+  for (const base of FOLDERS_BASES) {
+    watchBase(base);
+  }
   logger.info('⚡ [auto-rename] 启动完成');
 }
 

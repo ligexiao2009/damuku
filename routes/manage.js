@@ -354,4 +354,21 @@ router.get('/txsp/saved', (_req, res) => {
   res.json(success(txspPending));
 });
 
+// GET /api/manage/disk-usage — 外挂盘使用情况
+router.get('/manage/disk-usage', (req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync('df -h /Volumes/* 2>/dev/null', { encoding: 'utf-8', timeout: 3000 });
+    const lines = out.trim().split('\n').slice(1); // skip header
+    const disks = lines.map(l => {
+      const parts = l.trim().split(/\s+/);
+      return { fs: parts[0], size: parts[1], used: parts[2], avail: parts[3], pct: parts[4], mount: parts[8] || parts[5] };
+    }).filter(d => d.mount && d.mount !== '/');
+    res.json(success(disks));
+  } catch (err) {
+    logger.error(err);
+    res.status(500).json(fail(500, err.message));
+  }
+});
+
 module.exports = router;

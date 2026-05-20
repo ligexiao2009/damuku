@@ -941,7 +941,36 @@
         toast('规则已移除'); loadRetention();
       } catch (err) { toast('移除失败: ' + err.message, true); }
     }
+  async function loadDiskUsage() {
+    try {
+      const data = await api('/api/manage/disk-usage');
+      const el = document.getElementById('disk-usage');
+      if (!data || !data.length) { el.innerHTML = '<span style="color:var(--text-muted)">无外挂盘</span>'; return; }
+      el.innerHTML = data.map(d => {
+        const pct = parseInt(d.pct) || 0;
+        const barColor = pct > 80 ? 'var(--danger)' : pct > 50 ? '#f59e0b' : 'var(--primary)';
+        return '<div class="disk-row">' +
+          '<span class="disk-name">' + esc(d.mount) + '</span>' +
+          '<div class="disk-bar"><div style="width:' + pct + '%;background:' + barColor + '"></div></div>' +
+          '<span class="disk-info">' + d.used + ' / ' + d.size + ' (' + d.pct + ')</span>' +
+          '</div>';
+      }).join('');
+    } catch { document.getElementById('disk-usage').innerHTML = '<span style="color:var(--danger)">加载失败</span>'; }
+  }
+  loadDiskUsage();
   </script>
+
+<div class="card" style="margin-bottom:24px">
+  <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">外挂盘使用情况</h2>
+  <div id="disk-usage" style="font-size:13px;color:var(--text-muted)">加载中...</div>
+</div>
+<style>
+  .disk-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .disk-name { width: 100px; font-size: 12px; color: var(--text-main); flex-shrink: 0; }
+  .disk-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .disk-bar div { height: 100%; border-radius: 4px; min-width: 2px; }
+  .disk-info { width: 160px; font-size: 11px; color: var(--text-muted); flex-shrink: 0; text-align: right; }
+</style>
 
 </body>
 </html>
