@@ -12,6 +12,14 @@ function safeGet(obj, path, fallback = null) {
 async function fetchTxspDanmaku(roomId, programId, lastSeq = 0, cursor = '', reqCookie = '') {
   logger.debug(`📡 [txsp] 请求 roomId=${roomId} programId=${programId} lastSeq=${lastSeq}`);
 
+  // Filter to only essential cookies, avoid expired/conflicting ones
+  if (reqCookie) {
+    const essential = ['video_guid', 'vuserid', 'vusession', 'v_vusession', 'qq_domain_video_guid_verify'];
+    reqCookie = reqCookie.split(';')
+      .filter(p => essential.includes(p.trim().split('=')[0]))
+      .join('; ');
+  }
+
   const res = await axios.post(API_URL, {
     room_id: Number(roomId),
     cookie: cursor,
@@ -29,7 +37,7 @@ async function fetchTxspDanmaku(roomId, programId, lastSeq = 0, cursor = '', req
   const root = res.data?.data?.data;
   if (!root) {
     logger.warn(`⚠️ [txsp] 接口返回异常:`, JSON.stringify(res.data).slice(0, 200));
-    return { danmus: [], maxSeq: lastSeq, cursor, pullInterval: 5000 };
+    return { danmus: [], maxSeq: lastSeq, cursor: '', pullInterval: 5000 };
   }
 
   const nextCursor = root.cookie || cursor;
