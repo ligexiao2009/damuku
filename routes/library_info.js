@@ -5,7 +5,7 @@ const { isVideoExt } = require('../utils/file');
 const { detectVidsFromName, detectIqiyiTvidFromName } = require('../utils/video');
 const { fetchTencentVideoDetail, fetchCidByVid } = require('../services/tencent_detail');
 const bili = require('../services/bilibili');
-const { FOLDERS_BASE, META_DIR } = require('../shared/constants');
+const { FOLDERS_BASE, FOLDERS_BASES, META_DIR } = require('../shared/constants');
 const { resolveLibraryDirectory, isPathValidationError, scanFolders, hasDirectVideoFiles } = require('../shared/helpers');
 const axios = require('axios');
 const logger = require('../utils/logger');
@@ -200,23 +200,42 @@ async function detectAndFetch(folderPath, folderName, forceRefresh = false) {
     return { ...result, fromCache: false };
   }
 
-  // 无平台 ID，仅返回本地文件信息
-  return {
+  // 无平台 ID，尝试豆瓣搜索补充海报
+  const doubanCacheKey = `douban_${folderName}`;
+  const doubanCached = !forceRefresh ? readCache(doubanCacheKey) : null;
+  if (doubanCached) return { ...doubanCached, fromCache: true, localFiles: videoFiles, source: 'local' };
+
+  let doubanInfo = {};
+  try {
+    const sr = await searchDouban(folderName);
+    if (sr) {
+      doubanInfo = {
+        poster: sr.cover || '',
+        score: sr.rating || '',
+        doubanScore: sr.rating || '',
+        year: sr.abstract?.match(/(\d{4})/)?.[1] || '',
+        description: sr.abstract || '',
+      };
+    }
+  } catch {}
+
+  const result = {
     title: folderName,
-    poster: '',
-    year: '',
+    poster: doubanInfo.poster || '',
+    year: doubanInfo.year || '',
     episodeAll: videoFiles.length,
     genres: [],
-    description: '',
-    score: '',
-    doubanScore: '',
+    description: doubanInfo.description || '',
     cast: [],
     directors: [],
+    score: doubanInfo.score || '',
+    doubanScore: doubanInfo.doubanScore || '',
     episodes: [],
     localFiles: videoFiles,
     source: 'local',
-    fromCache: false,
   };
+  if (doubanInfo.poster) writeCache(doubanCacheKey, result);
+  return { ...result, fromCache: false };
 }
 
 async function getVidPageTitle(vid) {
@@ -264,81 +283,85 @@ async function searchDouban(query) {
 // GET /api/library/scan — 扫描所有剧文件夹摘要
 router.get('/library/scan', async (req, res) => {
   try {
-    const allFolders = scanFolders(FOLDERS_BASE);
     const items = [];
 
-    for (const f of allFolders) {
-      if (!hasDirectVideoFiles(f.path)) continue;
+    for (const base of FOLDERS_BASES) {
+      const allFolders = scanFolders(base);
+      for (const f of allFolders) {
+        if (!hasDirectVideoFiles(f.path)) continue;
 
-      // movie 文件夹特殊处理：每个文件单独当一部电影
-      if (f.name === 'movie') {
+        // movie 文件夹特殊处理：每个文件单独当一部电影
+        if (f.name === 'movie') {
+          try {
+            const entries = fs.readdirSync(f.path, { withFileTypes: true });
+            for (const e of entries) {
+              if (!e.isFile() || e.name.startsWith('.') || !isVideoExt(e.name)) continue;
+              let cacheKey = null;
+              let summary = null;
+              const vids = detectVidsFromName(e.name);
+              if (vids.length) cacheKey = 'tx_' + vids[0];
+              else { const tvid = detectIqiyiTvidFromName(e.name); if (tvid) cacheKey = 'iqiyi_' + tvid; }
+              if (cacheKey) summary = readCache(cacheKey);
+
+              items.push({
+                folderName: e.name.replace(/\.[^.]+$/, ''),
+                folderPath: f.path,
+                videoFile: e.name,
+                title: summary?.title || e.name.replace(/\.[^.]+$/, ''),
+                poster: summary?.poster || summary?.verticalPoster || '',
+                year: summary?.year || '',
+                score: summary?.doubanScore || summary?.score || '',
+                episodeAll: summary?.episodeAll || 1,
+                source: summary?.source || '',
+                hasCache: !!summary,
+                genres: summary?.genres || [],
+              });
+            }
+          } catch {}
+          continue;
+        }
+
+        // 尝试读缓存（腾讯/爱奇艺/B站）
+        let cacheKey = null;
+        let summary = null;
         try {
           const entries = fs.readdirSync(f.path, { withFileTypes: true });
           for (const e of entries) {
             if (!e.isFile() || e.name.startsWith('.') || !isVideoExt(e.name)) continue;
-            let cacheKey = null;
-            let summary = null;
             const vids = detectVidsFromName(e.name);
-            if (vids.length) cacheKey = 'tx_' + vids[0];
-            else { const tvid = detectIqiyiTvidFromName(e.name); if (tvid) cacheKey = 'iqiyi_' + tvid; }
-            if (cacheKey) summary = readCache(cacheKey);
-
-            items.push({
-              folderName: e.name.replace(/\.[^.]+$/, ''),
-              folderPath: f.path,
-              videoFile: e.name,
-              title: summary?.title || e.name.replace(/\.[^.]+$/, ''),
-              poster: summary?.poster || summary?.verticalPoster || '',
-              year: summary?.year || '',
-              score: summary?.doubanScore || summary?.score || '',
-              episodeAll: summary?.episodeAll || 1,
-              source: summary?.source || '',
-              hasCache: !!summary,
-              genres: summary?.genres || [],
-            });
+            if (vids.length) { cacheKey = 'tx_' + vids[0]; break; }
+            const tvid = detectIqiyiTvidFromName(e.name);
+            if (tvid) { cacheKey = 'iqiyi_' + tvid; break; }
+            const bvm = e.name.match(/BV[0-9A-Za-z]+/i);
+            if (bvm) { cacheKey = 'bili_' + bvm[0]; break; }
+            const epm = e.name.match(/ep(\d{4,})/i);
+            if (epm) { cacheKey = 'bili_' + epm[1]; break; }
           }
         } catch {}
-        continue;
+        if (cacheKey) summary = readCache(cacheKey);
+        if (!summary && cacheKey && cacheKey.startsWith('bili_')) summary = readCache(`bili_${f.name}`);
+        // 无平台缓存时，尝试豆瓣搜索缓存
+        if (!summary) summary = readCache(`douban_${f.name}`);
+
+        const fileCount = (() => {
+          try {
+            return fs.readdirSync(f.path).filter(n => isVideoExt(n) && !n.startsWith('.')).length;
+          } catch { return 0; }
+        })();
+
+        items.push({
+          folderName: f.name,
+          folderPath: f.path,
+          title: summary?.title || f.name,
+          poster: summary?.poster || summary?.verticalPoster || '',
+          year: summary?.year || '',
+          score: summary?.doubanScore || summary?.score || '',
+          episodeAll: summary?.episodeAll || fileCount,
+          source: summary?.source || '',
+          hasCache: !!summary,
+          genres: summary?.genres || [],
+        });
       }
-
-      // 尝试读缓存（腾讯/爱奇艺/B站）
-      let cacheKey = null;
-      let summary = null;
-      try {
-        const entries = fs.readdirSync(f.path, { withFileTypes: true });
-        for (const e of entries) {
-          if (!e.isFile() || e.name.startsWith('.') || !isVideoExt(e.name)) continue;
-          const vids = detectVidsFromName(e.name);
-          if (vids.length) { cacheKey = 'tx_' + vids[0]; break; }
-          const tvid = detectIqiyiTvidFromName(e.name);
-          if (tvid) { cacheKey = 'iqiyi_' + tvid; break; }
-          const bvm = e.name.match(/BV[0-9A-Za-z]+/i);
-          if (bvm) { cacheKey = 'bili_' + bvm[0]; break; }
-          const epm = e.name.match(/ep(\d{4,})/i);
-          if (epm) { cacheKey = 'bili_' + epm[1]; break; }
-        }
-      } catch {}
-      if (cacheKey) summary = readCache(cacheKey);
-      if (!summary && cacheKey && cacheKey.startsWith('bili_')) summary = readCache(`bili_${f.name}`);
-
-      const fileCount = (() => {
-        try {
-          return fs.readdirSync(f.path).filter(n => isVideoExt(n) && !n.startsWith('.')).length;
-        } catch { return 0; }
-      })();
-
-      items.push({
-        folderName: f.name,
-        folderPath: f.path,
-        title: summary?.title || f.name,
-        poster: summary?.poster || summary?.verticalPoster || '',
-        year: summary?.year || '',
-        score: summary?.doubanScore || summary?.score || '',
-        episodeAll: summary?.episodeAll || fileCount,
-        source: summary?.source || '',
-        hasCache: !!summary,
-        genres: summary?.genres || [],
-      });
     }
 
     res.json(success(items));
@@ -416,22 +439,23 @@ router.get('/library/info', async (req, res) => {
       // 尝试从缓存恢复
       try {
         const entries = fs.readdirSync(safePath, { withFileTypes: true });
+        const allVideoFiles = entries.filter(e => e.isFile() && !e.name.startsWith('.') && isVideoExt(e.name)).map(e => e.name);
         for (const e of entries) {
           if (!e.isFile() || e.name.startsWith('.') || !isVideoExt(e.name)) continue;
           const vids = detectVidsFromName(e.name);
           if (vids.length) {
             const cached = readCache(`tx_${vids[0]}`);
-            if (cached) return res.json(success({ ...cached, fromCache: true, localFiles: cached.localFiles || [] }));
+            if (cached) return res.json(success({ ...cached, fromCache: true, localFiles: allVideoFiles }));
           }
           const tvid = detectIqiyiTvidFromName(e.name);
           if (tvid) {
             const cached = readCache(`iqiyi_${tvid}`);
-            if (cached) return res.json(success({ ...cached, fromCache: true, localFiles: cached.localFiles || [] }));
+            if (cached) return res.json(success({ ...cached, fromCache: true, localFiles: allVideoFiles }));
           }
           const bvm = e.name.match(/BV[0-9A-Za-z]+/i);
           if (bvm) {
             const cached = readCache(`bili_${bvm[0]}`);
-            if (cached) return res.json(success({ ...cached, fromCache: true, localFiles: cached.localFiles || [] }));
+            if (cached) return res.json(success({ ...cached, fromCache: true, localFiles: allVideoFiles }));
           }
         }
       } catch {}

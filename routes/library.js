@@ -49,7 +49,10 @@ router.get('/video-files', (req, res) => {
         files.push({ path: path.join(resolved, entry.name), name: entry.name });
       }
     } else {
-      files = scanVideoFiles(FOLDERS_BASE);
+      files = [];
+      for (const base of FOLDERS_BASES) {
+        files = files.concat(scanVideoFiles(base));
+      }
     }
     files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
     res.json(success(files));
