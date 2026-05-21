@@ -37,12 +37,12 @@ function randomGuid() {
 async function fetchTencentVideoDetail(cid, vid = '') {
   const deviceGuid = randomGuid();
 
+  const pageParams = { req_from: 'web_vsite' };
+  if (vid) pageParams.vid = vid;
+  if (cid) pageParams.cid = cid;  // 无 cid 时只传 vid，拿单视频正确信息
+
   const body = {
-    page_params: {
-      cid,
-      vid: vid || undefined,
-      req_from: 'web_vsite',
-    },
+    page_params: pageParams,
     page_bypass_params: {
       params: { caller_id: VIDEO_APPID, platform_id: '2' },
       scene: 'desk_detail',

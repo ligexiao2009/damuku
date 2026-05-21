@@ -87,13 +87,18 @@ function resolveExistingVideoPath(relativeName, videoDir) {
   const fullPath = resolveVideoPath(relativeName, videoDir);
   if (!fs.existsSync(fullPath)) throw new Error('视频文件不存在');
   if (!fs.statSync(fullPath).isFile()) throw new Error('路径不是文件');
-  if (!isVideoExt(fullPath)) throw new Error('不支持的视频格式');
+  if (!isVideoExt(fullPath) && !isSubtitleExt(fullPath)) throw new Error('不支持的视频格式');
   return fullPath;
 }
 
 /** 判断文件扩展名是否为视频格式。 */
 function isVideoExt(fileName) {
-  return /\.(mp4|mkv|mov|webm|avi|m4v|srt|vtt|ass|ssa)$/i.test(fileName);
+  return /\.(mp4|mkv|mov|webm|avi|m4v)$/i.test(fileName);
+}
+
+/** 判断文件扩展名是否为字幕格式。 */
+function isSubtitleExt(fileName) {
+  return /\.(srt|vtt|ass|ssa|sub)$/i.test(fileName);
 }
 
 /**
@@ -148,6 +153,7 @@ module.exports = {
   resolveVideoPath,
   resolveExistingVideoPath,
   isVideoExt,
+  isSubtitleExt,
   scanVideos,
   getCacheFilePaths,
   getThumbPath

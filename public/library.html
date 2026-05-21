@@ -434,7 +434,7 @@
         html += '<h3>演员</h3><div class="cast-list">';
         d.cast.forEach(p => {
           html += '<div class="cast-item">';
-          if (p.avatar) html += '<img src="' + p.avatar + '" onerror="this.style.display=\'none\'">';
+          if (p.avatar) html += '<img src="/api/library/poster?url=' + encodeURIComponent(p.avatar) + '" onerror="this.style.display=\'none\'">';
           else html += '<div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.06);margin:auto;"></div>';
           html += '<div class="cname">' + esc(p.name) + '</div>';
           html += '<div class="crole">' + esc(p.role || '') + '</div>';

@@ -63,7 +63,7 @@ async function detectAndFetch(folderPath, folderName, forceRefresh = false) {
       if (cid) {
         const detail = await fetchTencentVideoDetail(cid, vids[0]);
         if (detail) {
-          // 用豆瓣补充评分
+          // 用豆瓣补充评分、简介、演员
           let doubanRating = '';
           if (detail.title) {
             try {
@@ -72,6 +72,16 @@ async function detectAndFetch(folderPath, folderName, forceRefresh = false) {
                 detail.doubanScore = sr.rating || detail.doubanScore;
                 detail.doubanRatingCount = sr.ratingCount;
                 detail.doubanUrl = sr.url;
+                // 用摘要或详情补全简介/演员
+                if (sr.abstract && !detail.description) detail.description = sr.abstract;
+                if (sr.subjectId) {
+                  const dd = await fetchDoubanDetail(sr.subjectId);
+                  if (dd) {
+                    if (dd.description && (!detail.description || dd.description.length > detail.description.length)) detail.description = dd.description;
+                    if (dd.directors.length) detail.directors = dd.directors;
+                    if (dd.cast.length) detail.cast = dd.cast;
+                  }
+                }
               }
             } catch {}
           }
@@ -117,10 +127,21 @@ async function detectAndFetch(folderPath, folderName, forceRefresh = false) {
             poster: albumImage || eps[0]?.imageUrl || '',
             year: eps[0]?.period?.slice(0, 4) || '',
             episodeAll: eps.length,
-            genres: [],
-            description: eps[0]?.description || '',
-            cast: [],
-            directors: (eps[0]?.people?.director || []).map(d => ({ name: d.name, role: '导演' })),
+            genres: (infoResp.data?.data?.categories || []).map(c => c.name),
+            description: eps[0]?.description || infoResp.data?.data?.description || '',
+            cast: (infoResp.data?.data?.people?.main_charactor || []).map(c => ({
+              name: c.name,
+              role: (c.character || [])[0] || '',
+              avatar: c.image_url || '',
+            })),
+            directors: (() => {
+              const seen = new Set();
+              const list = [];
+              for (const d of [...(infoResp.data?.data?.people?.director || []), ...(eps[0]?.people?.director || [])]) {
+                if (!seen.has(d.name)) { seen.add(d.name); list.push({ name: d.name, role: '导演' }); }
+              }
+              return list;
+            })(),
             score: '',
             doubanScore: '',
             episodes: epList,
@@ -128,7 +149,7 @@ async function detectAndFetch(folderPath, folderName, forceRefresh = false) {
             source: 'iqiyi',
           };
 
-          // 豆瓣补充
+          // 豆瓣补充评分、海报、简介、演员
           if (result.title) {
             try {
               const sr = await searchDouban(result.title);
@@ -137,6 +158,15 @@ async function detectAndFetch(folderPath, folderName, forceRefresh = false) {
                 result.doubanRatingCount = sr.ratingCount;
                 result.doubanUrl = sr.url;
                 if (sr.cover) result.poster = sr.cover;
+                if (sr.abstract && !result.description) result.description = sr.abstract;
+                if (sr.subjectId) {
+                  const dd = await fetchDoubanDetail(sr.subjectId);
+                  if (dd) {
+                    if (dd.description && (!result.description || dd.description.length > result.description.length)) result.description = dd.description;
+                    if (dd.directors.length && !result.directors?.length) result.directors = dd.directors;
+                    if (dd.cast.length && !result.cast?.length) result.cast = dd.cast;
+                  }
+                }
               }
             } catch {}
           }
@@ -215,7 +245,18 @@ async function detectAndFetch(folderPath, folderName, forceRefresh = false) {
         doubanScore: sr.rating || '',
         year: sr.abstract?.match(/(\d{4})/)?.[1] || '',
         description: sr.abstract || '',
+        cast: [],
+        directors: [],
       };
+      // 尝试拿详情页的简介和演员
+      if (sr.subjectId) {
+        const detail = await fetchDoubanDetail(sr.subjectId);
+        if (detail) {
+          if (detail.description) doubanInfo.description = detail.description;
+          if (detail.directors.length) doubanInfo.directors = detail.directors;
+          if (detail.cast.length) doubanInfo.cast = detail.cast;
+        }
+      }
     }
   } catch {}
 
@@ -226,8 +267,8 @@ async function detectAndFetch(folderPath, folderName, forceRefresh = false) {
     episodeAll: videoFiles.length,
     genres: [],
     description: doubanInfo.description || '',
-    cast: [],
-    directors: [],
+    cast: doubanInfo.cast || [],
+    directors: doubanInfo.directors || [],
     score: doubanInfo.score || '',
     doubanScore: doubanInfo.doubanScore || '',
     episodes: [],
@@ -250,8 +291,18 @@ async function getVidPageTitle(vid) {
   return '';
 }
 
+// 豆瓣请求节流：至少间隔 2 秒
+let lastDoubanRequest = 0;
+async function doubanThrottle() {
+  const now = Date.now();
+  const wait = Math.max(0, 2200 - (now - lastDoubanRequest));
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  lastDoubanRequest = Date.now();
+}
+
 async function searchDouban(query) {
   try {
+    await doubanThrottle();
     const res = await axios.get(
       `https://movie.douban.com/subject_search?search_text=${encodeURIComponent(query)}`,
       {
@@ -262,6 +313,7 @@ async function searchDouban(query) {
     const match = res.data.match(/window\.__DATA__\s*=\s*({.*?});/);
     if (!match) return null;
     const data = JSON.parse(match[1]);
+    if (data.total === 0 && data.error_info) return null; // 限流
     const items = data.items || [];
     // 优先匹配完全一致
     const exact = items.find(item => (item.title || '').includes(query));
@@ -275,6 +327,40 @@ async function searchDouban(query) {
       abstract: item.abstract || '',
       cover: item.cover_url || '',
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 从豆瓣移动端页面提取简介和演员信息
+ */
+async function fetchDoubanDetail(subjectId) {
+  try {
+    const res = await axios.get(`https://m.douban.com/movie/subject/${subjectId}/`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15' },
+      timeout: 10000,
+    });
+    const html = res.data;
+    // meta description: "创可贴豆瓣评分：7.3 简介：..."
+    const descM = html.match(/<meta name="description" content="([^"]+)"/);
+    let description = '';
+    if (descM) {
+      const parts = descM[1].split('简介：');
+      if (parts.length > 1) description = parts[1].trim();
+    }
+    // Extract director and cast from movie abstract (the one containing 执导)
+    const absM = html.match(/<p class="abstract[^"]*"[^>]*>([^<]*执导[^<]*)<\/p>/);
+    let directors = [];
+    let cast = [];
+    if (absM) {
+      const text = absM[1];
+      const dirM = text.match(/由(.+?)执导/);
+      if (dirM) directors = dirM[1].split('、').map(n => ({ name: n.trim() }));
+      const castM = text.match(/执导[，,\s]*([^等]+?)等?主演/);
+      if (castM) cast = castM[1].split('、').map(n => ({ name: n.trim(), role: '' }));
+    }
+    return { description, directors, cast };
   } catch {
     return null;
   }
@@ -387,16 +473,14 @@ router.get('/library/info', async (req, res) => {
       const filePath = path.join(safePath, videoFile);
       if (!fs.existsSync(filePath)) return res.status(404).json(fail(404, '文件不存在'));
 
-      // 尝试腾讯
+      // 尝试腾讯（movie 只传 vid 不传 cid，避免拿到合集页数据）
       const vids = detectVidsFromName(videoFile);
       if (vids.length) {
         const cacheKey = `tx_${vids[0]}`;
         const cached = !forceRefresh ? readCache(cacheKey) : null;
         if (cached) return res.json(success({ ...cached, fromCache: true, localFiles: [videoFile] }));
-        const cid = await fetchCidByVid(vids[0]);
-        if (cid) {
-          const detail = await fetchTencentVideoDetail(cid, vids[0]);
-          if (detail) {
+        const detail = await fetchTencentVideoDetail('', vids[0]);
+        if (detail) {
             // 如果详情标题与文件名不匹配（合集场景），用 vid 页面标题
             const fileTitle = videoFile.replace(/\.[^.]+$/, '').replace(/第\d+集/, '').replace(/[_\s-]?\w{10,12}$/, '').trim();
             if (!detail.title || !fileTitle.includes(detail.title.replace(/[（(].*$/, '').trim()) && !detail.title.includes(fileTitle.slice(0,4))) {
@@ -405,11 +489,22 @@ router.get('/library/info', async (req, res) => {
                 if (pageTitle) detail.title = pageTitle;
               } catch {}
             }
+            // 豆瓣搜索优先用文件名（更可靠），腾讯标题作 fallback
+            const doubanQuery = fileTitle.replace(/[_\-\s]*[a-z]*\d{4,}[a-z]*$/i, '').replace(/[_\-\s]+$/, '').trim() || detail.title;
             try {
-              const sr = await searchDouban(detail.title);
+              const sr = (await searchDouban(doubanQuery)) || (doubanQuery !== detail.title ? await searchDouban(detail.title) : null);
               if (sr) {
                 detail.doubanScore = sr.rating || detail.doubanScore;
                 if (sr.cover) detail.poster = sr.cover;
+                if (sr.abstract && !detail.description) detail.description = sr.abstract;
+                if (sr.subjectId) {
+                  const dd = await fetchDoubanDetail(sr.subjectId);
+                  if (dd) {
+                    if (dd.description && (!detail.description || dd.description.length > detail.description.length)) detail.description = dd.description;
+                    if (dd.directors.length) detail.directors = dd.directors;
+                    if (dd.cast.length) detail.cast = dd.cast;
+                  }
+                }
               }
             } catch {}
             // 电影场景：只保留匹配的分集，强制 1 集
@@ -424,7 +519,6 @@ router.get('/library/info', async (req, res) => {
             writeCache(cacheKey, result);
             return res.json(success({ ...result, fromCache: false }));
           }
-        }
       }
 
       // 简单返回
