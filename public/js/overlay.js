@@ -857,7 +857,7 @@
   function detectIqiyiTvid(name) {
     if (!name) return '';
     const base = String(name).replace(/\.[^.]+$/, '');
-    const m = base.match(/(\d{9,16})/);
+    const m = base.match(/(\d{8,16})/);
     return m ? m[1] : '';
   }
 

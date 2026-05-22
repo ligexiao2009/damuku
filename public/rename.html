@@ -148,7 +148,7 @@
 
     const sourceConfig = {
       bili: { label: 'B站剧集链接', placeholder: '例如 https://www.bilibili.com/bangumi/play/ep473314', endpoint: '/api/rename' },
-      iqiyi: { label: '任意一集的 tvid（9-16位数字）', placeholder: '例如 103405000', endpoint: '/api/rename/iqiyi' },
+      iqiyi: { label: '任意一集的 tvid（8-16位数字）', placeholder: '例如 103405000', endpoint: '/api/rename/iqiyi' },
       tencent: { label: '腾讯视频 cid 或任意一集 vid', placeholder: 'cid 例如 mzc00200umueb9v  或 vid 例如 i0033qa01p1', endpoint: '/api/rename/tencent' },
     };
 
@@ -169,7 +169,7 @@
         try {
           const files = await api('/api/video-files?folder=' + encodeURIComponent(dir));
           for (const f of files) {
-            const m = f.name.match(/\d{9,16}/);
+            const m = f.name.match(/\d{8,16}/);
             if (m) { idInput.value = m[0]; idInput.style.background = '#fee2e2'; idInput.style.borderColor = '#ef4444'; setTimeout(() => { idInput.style.background = ''; idInput.style.borderColor = ''; }, 2000); break; }
           }
         } catch {}

@@ -22,7 +22,7 @@ function detectPlatformAndID(files) {
     const tencent = base.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/i);
     if (tencent) return { platform: 'tencent', id: tencent[1] };
     // 爱奇艺 tvid
-    const iqiyi = base.match(/(\d{9,16})/);
+    const iqiyi = base.match(/(\d{8,16})/);
     if (iqiyi) return { platform: 'iqiyi', id: iqiyi[0] };
   }
   return null;

@@ -1117,7 +1117,7 @@
     function detectIqiyiTvidFromName(name) {
       if (!name) return '';
       const baseName = String(name).replace(/\.[^.]+$/, '');
-      const m = baseName.match(/(\d{9,16})/);
+      const m = baseName.match(/(\d{8,16})/);
       return m ? m[1] : '';
     }
 

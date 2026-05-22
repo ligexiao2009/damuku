@@ -162,8 +162,8 @@ router.post('/rename/iqiyi', async (req, res) => {
       const ext = path.extname(fname);
       const base = path.basename(fname, ext);
 
-      // 已含 tvid（9-16 位数字），跳过
-      if (/\d{9,16}/.test(base)) continue;
+      // 已含 tvid（8-16 位数字），跳过
+      if (/\d{8,16}/.test(base)) continue;
 
       const epNum = extractEpisodeNumberFromFileName(fname);
       if (epNum == null || !epMap[epNum]) continue;

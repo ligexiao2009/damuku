@@ -25,12 +25,20 @@ function detectVideoIdFromName(name) {
   return '';
 }
 
-/** 从文件名中提取爱奇艺 tvid（9-16 位数字），未匹配返回 ''。 */
+/** 从文件名中提取爱奇艺 tvid（8-16 位数字，兼容早期短ID），未匹配返回 ''。 */
 function detectIqiyiTvidFromName(name) {
   if (!name) return '';
   const base = path.basename(name, path.extname(name));
-  const m = base.match(/(\d{9,16})/);
-  return m ? m[1] : '';
+  // 匹配 8-16 位数字，但排除年份（以 19 或 20 开头）、纯日期格式
+  const m = base.match(/(\d{8,16})/g);
+  if (!m) return '';
+  for (const num of m) {
+    // 跳过年份和日期
+    if (/^(19|20)\d{2}$/.test(num)) continue;
+    if (/^(19|20)\d{6,8}$/.test(num)) continue;
+    return num;
+  }
+  return '';
 }
 
 /** 去除文件名中的非法字符，空格替换为下划线。 */
