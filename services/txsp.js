@@ -10,7 +10,7 @@ function safeGet(obj, path, fallback = null) {
 }
 
 async function fetchTxspDanmaku(roomId, programId, lastSeq = 0, cursor = '', reqCookie = '') {
-  logger.debug(`📡 [txsp] 请求 roomId=${roomId} programId=${programId} lastSeq=${lastSeq}`);
+  logger.info(`📡 [txsp] 请求 roomId=${roomId} programId=${programId} lastSeq=${lastSeq} cursor=${(cursor||'').slice(0,40)} filteredCookie=${(reqCookie||'').slice(0,50)}`);
 
   // Filter to only essential cookies, avoid expired/conflicting ones
   if (reqCookie) {

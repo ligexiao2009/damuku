@@ -332,12 +332,12 @@ router.get('/danmaku', async (req, res) => {
       const roomId = req.query.roomId || '';
       const programId = req.query.programId || '';
       const lastSeq = Number(req.query.lastSeq) || 0;
-      const cursor = req.query.cursor || '';
+      const cursor = (req.query.cursor || '').replace(/ /g, '+'); // iOS URLComponents 可能把 + 解码为空格
       if (!roomId || !programId) return res.status(400).json(fail(400, '缺少 roomId 或 programId'));
       const txspCookie = req.query.txspCookie || process.env.TXSP_COOKIE || '';
       const cookieSource = req.query.txspCookie ? 'client' : (process.env.TXSP_COOKIE ? 'env' : 'none');
       const cookieHash = txspCookie ? `[${cookieSource}: ${txspCookie.slice(0,16)}...${txspCookie.slice(-8)}]` : '(无)';
-      logger.info(`[txsp] roomId=${roomId} programId=${programId} cookie=${cookieHash} lastSeq=${lastSeq}`);
+      logger.info(`[txsp] roomId=${roomId} programId=${programId} cookie=${cookieHash} lastSeq=${lastSeq} cursor=${(cursor||'').slice(0,40)}`);
       if (txspCookie) logger.debug(`[txsp] cookie 完整值 (${txspCookie.length} 字符): ${txspCookie}`);
       const { danmus, maxSeq, cursor: nextCursor, pullInterval } = await fetchTxspDanmaku(roomId, programId, lastSeq, cursor, txspCookie);
       return res.json(success({ source: 'txsp', id: `${roomId}_${programId}`, count: danmus.length, danmus, maxSeq, cursor: nextCursor, pullInterval }));
