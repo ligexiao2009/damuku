@@ -293,11 +293,23 @@ router.get('/danmaku', async (req, res) => {
       return res.json(success(result));
     }
 
-    // 芒果TV
+    // 芒果TV — 支持: videoId | HHMMSS/videoId | YYYY/MM/DD/HHMMSS/videoId
     if (source === 'mango') {
-      const parts = id.split('/');
-      const timeStr = parts[0] || '000000';
-      const videoId = parts[1] || id;
+      const parts = id.split('/').filter(Boolean);
+      let datePath, timeStr, videoId;
+      if (parts.length >= 5) {
+        datePath = `${parts[0]}/${parts[1]}/${parts[2]}`;
+        timeStr = parts[3];
+        videoId = parts[4];
+      } else if (parts.length >= 2) {
+        datePath = undefined;
+        timeStr = parts[0];
+        videoId = parts[1];
+      } else {
+        datePath = undefined;
+        timeStr = '000000';
+        videoId = parts[0] || id;
+      }
       const forceRefresh = req.query.refresh === '1';
       const cacheFile = path.join(DANMU_DIR, `mango_${timeStr}_${videoId}.json`);
 
@@ -306,9 +318,9 @@ router.get('/danmaku', async (req, res) => {
         return res.json(success({ ...cached, fromCache: true }));
       }
 
-      logger.info(`[mango] 抓取弹幕 videoId: ${videoId} time: ${timeStr}`);
+      logger.info(`[mango] 抓取弹幕 videoId: ${videoId} date: ${datePath || 'today'} time: ${timeStr}`);
       logger.timeDebug('[mango] 耗时');
-      const danmus = await fetchMangoDanmaku(videoId, undefined, timeStr);
+      const danmus = await fetchMangoDanmaku(videoId, datePath, timeStr);
       logger.timeEndDebug('[mango] 耗时');
 
       const result = { source: 'mango', id: videoId, count: danmus.length, danmus };

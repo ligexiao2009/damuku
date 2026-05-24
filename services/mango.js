@@ -50,10 +50,16 @@ async function fetchMangoDanmaku(videoId, dateStr, timeStr) {
 
       for (const d of items) {
         if (!d.content) continue;
+        let color = '#ffffff';
+        const cl = d.v2_color?.color_left;
+        if (cl && cl.r >= 0 && cl.g >= 0 && cl.b >= 0) {
+          const hex = (c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0');
+          color = `#${hex(cl.r)}${hex(cl.g)}${hex(cl.b)}`;
+        }
         result.push({
           text: d.content,
           time: d.time / 1000,
-          color: '#ffffff',
+          color,
           mode: 'scroll',
         });
       }

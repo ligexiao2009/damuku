@@ -64,6 +64,30 @@ router.delete('/manage/video', (req, res) => {
   }
 });
 
+// DELETE /api/manage/videos — 批量删除
+router.delete('/manage/videos', (req, res) => {
+  try {
+    const paths = req.body.paths;
+    if (!Array.isArray(paths) || !paths.length) {
+      return res.status(400).json(fail(400, '缺少 paths 参数'));
+    }
+    const results = [];
+    for (const fp of paths) {
+      try {
+        const resolved = resolveLibraryVideoFile(fp);
+        fs.unlinkSync(resolved);
+        results.push({ path: fp, ok: true });
+      } catch (e) {
+        results.push({ path: fp, ok: false, error: e.message });
+      }
+    }
+    logger.info(`🗑️ [manage] 批量删除: ${results.filter(r => r.ok).length}/${paths.length} 成功`);
+    res.json(success(results));
+  } catch (err) {
+    res.status(500).json(fail(500, err.message));
+  }
+});
+
 // GET /api/manage/retention
 router.get('/manage/retention', (_req, res) => {
   try {

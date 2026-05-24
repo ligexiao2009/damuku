@@ -205,7 +205,7 @@
 
     .table-header {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 100px 110px 55px 55px 55px;
+      grid-template-columns: 32px minmax(0, 1fr) 100px 110px 55px 55px 55px;
       gap: 16px;
       padding: 12px 20px;
       background: var(--bg);
@@ -230,7 +230,7 @@
 
     .table-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 100px 110px 55px 55px 55px;
+      grid-template-columns: 32px minmax(0, 1fr) 100px 110px 55px 55px 55px;
       gap: 16px;
       align-items: center;
       padding: 14px 20px;
@@ -238,8 +238,11 @@
       transition: background 0.15s ease;
     }
 
+    .row-checkbox { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+
     .table-row:last-child { border-bottom: none; }
     .table-row:hover { background: #f8fafc; }
+    .table-row.selected { background: var(--primary-light); }
 
     .col-name {
       display: flex;
@@ -417,7 +420,7 @@
 
     @media (max-width: 768px) {
       .table-header, .table-row {
-        grid-template-columns: minmax(0, 1fr) 80px 70px 48px 48px 48px;
+        grid-template-columns: 28px minmax(0, 1fr) 80px 70px 48px 48px 48px;
       }
       .col-date { display: none; }
       .retention-btn { font-size: 10px; padding: 4px 6px; }
@@ -457,10 +460,12 @@
 
       <div class="table-toolbar">
         <div class="video-count" id="videoCount">0 个视频</div>
+        <button class="btn-danger" id="batchDeleteBtn" style="display:none;font-size:13px;padding:6px 14px;" onclick="batchDelete()">批量删除 (<span id="selectedCount">0</span>)</button>
       </div>
 
       <div class="table-container">
         <div class="table-header" id="tableHeader">
+          <span style="display:flex;align-items:center;"><input type="checkbox" id="selectAll" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer;" onclick="toggleSelectAll()"></span>
           <span class="sortable" data-sort="name">文件名称<span class="sort-arrow"></span></span>
           <span class="sortable" data-sort="size">大小<span class="sort-arrow"></span></span>
           <span class="sortable col-date" data-sort="date">剩余<span class="sort-arrow"></span></span>
@@ -672,7 +677,8 @@
             ? '<span class="col-date ' + remain.cls + '" title="' + formatDate(f.mtime) + ' · 规则 ' + rule.days + ' 天 · 到期 ' + formatDate(rule.setAt + rule.days * 86400000) + '">' + remain.label + '</span>'
             : '<span class="col-date" title="' + formatDate(f.mtime) + '">' + formatDate(f.mtime) + '</span>';
           html += `
-            <div class="table-row">
+            <div class="table-row" data-path="${esc(f.path)}">
+              <input type="checkbox" class="row-checkbox" data-path="${esc(f.path)}" onclick="onRowCheck()">
               <span class="col-name" title="${esc(f.name)}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                 ${esc(f.name)}
@@ -705,6 +711,7 @@
           });
         }
         updateSortHeaders();
+        updateSelectUI();
         loadRetentionBadges();
       } catch (err) {
         videoTableBody.innerHTML = '<div class="empty-state" style="color:var(--danger)">加载失败: ' + esc(err.message) + '</div>';
@@ -721,6 +728,46 @@
       try {
         await api('/api/manage/play', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath }) });
       } catch (err) { toast('播放失败: ' + err.message, true); }
+    }
+
+    function getSelectedPaths() {
+      var boxes = videoTableBody.querySelectorAll('.row-checkbox:checked');
+      return Array.from(boxes).map(function(cb) { return cb.getAttribute('data-path'); });
+    }
+
+    function updateSelectUI() {
+      var checked = videoTableBody.querySelectorAll('.row-checkbox:checked').length;
+      var total = videoTableBody.querySelectorAll('.row-checkbox').length;
+      document.getElementById('selectAll').checked = total > 0 && checked === total;
+      document.getElementById('selectAll').indeterminate = checked > 0 && checked < total;
+      document.getElementById('selectedCount').textContent = checked;
+      document.getElementById('batchDeleteBtn').style.display = checked > 0 ? '' : 'none';
+      var rows = videoTableBody.querySelectorAll('.table-row');
+      for (var i = 0; i < rows.length; i++) {
+        var cb = rows[i].querySelector('.row-checkbox');
+        rows[i].classList.toggle('selected', cb.checked);
+      }
+    }
+
+    function toggleSelectAll() {
+      var checked = document.getElementById('selectAll').checked;
+      var boxes = videoTableBody.querySelectorAll('.row-checkbox');
+      for (var i = 0; i < boxes.length; i++) { boxes[i].checked = checked; }
+      updateSelectUI();
+    }
+
+    function onRowCheck() { updateSelectUI(); }
+
+    async function batchDelete() {
+      var paths = getSelectedPaths();
+      if (!paths.length) return;
+      if (!confirm('危险操作: 确定要永久删除选中的 ' + paths.length + ' 个文件吗？此操作不可撤销。')) return;
+      try {
+        var result = await api('/api/manage/videos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths: paths }) });
+        var ok = result.filter(function(r) { return r.ok; }).length;
+        toast('成功删除 ' + ok + ' / ' + result.length + ' 个文件');
+        loadVideos(videoFolderSelect.value);
+      } catch (err) { toast('批量删除失败: ' + err.message, true); }
     }
 
     async function deleteVideo(filePath) {
