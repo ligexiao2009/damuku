@@ -9,9 +9,29 @@ const logger = require('../utils/logger');
  * @returns {Array<{text, time, color, mode}>}
  */
 async function fetchMangoDanmaku(videoId, dateStr, timeStr) {
-  const now = new Date();
-  const date = dateStr || `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getDate()}`;
-  const time = timeStr || '000000';
+  // 没指定日期时，探测最近7天 + 000000 找到正确日期
+  let date, time;
+  if (dateStr) {
+    date = dateStr;
+    time = timeStr || '000000';
+  } else {
+    time = timeStr || '000000';
+    date = null;
+    for (let d = 0; d < 7; d++) {
+      const dt = new Date(Date.now() - d * 86400000);
+      const ds = `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')}`;
+      const probeUrl = `https://bullet-ws.hitv.com/bullet/tx/${ds}/${time}/${videoId}/0.json`;
+      try {
+        const probe = await axios.get(probeUrl, { timeout: 5000 });
+        if (typeof probe.data === 'object' && !(typeof probe.data === 'string' && probe.data.includes('NoSuchKey'))) {
+          date = ds;
+          logger.info(`[mango] 自动探测命中日期: ${ds}`);
+          break;
+        }
+      } catch {}
+    }
+    if (!date) { logger.warn(`[mango] 7天内未找到弹幕, videoId=${videoId}`); return []; }
+  }
 
   const baseUrl = `https://bullet-ws.hitv.com/bullet/tx/${date}/${time}/${videoId}`;
   const result = [];

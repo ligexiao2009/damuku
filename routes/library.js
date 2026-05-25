@@ -238,4 +238,40 @@ router.post('/rename/tencent', async (req, res) => {
   }
 });
 
+// POST /api/rename/mango — 芒果TV单文件重命名
+router.post('/rename/mango', (req, res) => {
+  try {
+    const { filePath, mangoId } = req.body || {};
+    if (!filePath || !mangoId) return res.status(400).json(fail(400, '缺少 filePath 或 mangoId'));
+    // 支持完整URL或 HHMMSS/videoId
+    const urlMatch = mangoId.match(/\/bullet\/tx\/\d{4}\/\d{2}\/\d{2}\/(\d{6})\/(\d{7,8})\//);
+    const normalizedId = urlMatch ? urlMatch[1] + '/' + urlMatch[2] : mangoId;
+    if (!/^\d{6}\/\d{7,8}$/.test(normalizedId)) return res.status(400).json(fail(400, 'mangoId 格式应为 HHMMSS/videoId 或完整 bullet URL'));
+
+    const safeDir = resolveLibraryDirectory(path.dirname(filePath));
+    const safePath = path.join(safeDir, path.basename(filePath));
+    if (!fs.existsSync(safePath)) return res.status(404).json(fail(404, '文件不存在: ' + path.basename(safePath)));
+    const dir = path.dirname(safePath);
+    const ext = path.extname(safePath);
+    const base = path.basename(safePath, ext);
+
+    // 去掉已有的 _mango_xxx_xxx 后缀避免重复
+    const cleanBase = base.replace(/_mango_\d{6}_\d{7,8}$/, '');
+
+    const [time, videoId] = normalizedId.split('/');
+    const newName = `${cleanBase}_mango_${time}_${videoId}${ext}`;
+    const newPath = path.join(dir, newName);
+
+    if (fs.existsSync(newPath)) return res.status(400).json(fail(400, '目标文件已存在: ' + newName));
+
+    fs.renameSync(safePath, newPath);
+    logger.info(`[mango-rename] ${path.basename(safePath)} → ${newName}`);
+    res.json(success({ oldName: path.basename(safePath), newName }));
+  } catch (err) {
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, err.message || '重命名失败'));
+  }
+});
+
 module.exports = router;

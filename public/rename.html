@@ -119,6 +119,19 @@
   </div>
 
   <div class="card">
+    <h2 style="margin:0 0 8px; font-size:18px;">芒果TV 单文件重命名</h2>
+    <label>选择视频文件</label>
+    <div class="row">
+      <input type="text" id="mangoFilePath" placeholder="例如 /Volumes/video/20170430-第2期.mp4">
+      <select id="mangoFileSelect"><option value="">-- 加载中... --</option></select>
+    </div>
+    <label>芒果弹幕地址 或 HHMMSS/videoId</label>
+    <input type="text" id="mangoId" placeholder="例如 https://bullet-ws.hitv.com/bullet/tx/2026/05/25/171519/20051653/1.json">
+    <button id="mangoRenameBtn" class="action">重命名</button>
+    <pre id="mangoResult"></pre>
+  </div>
+
+  <div class="card">
     <h2 style="margin:0 0 8px; font-size:18px;">视频转换</h2>
     <label>视频文件路径</label>
     <div class="row">
@@ -225,6 +238,57 @@
       } catch (err) {
         resultBox.textContent = '错误：' + err.message;
       }
+    });
+
+    // ---- 芒果TV 单文件重命名 ----
+    const mangoFilePath = document.getElementById('mangoFilePath');
+    const mangoFileSelect = document.getElementById('mangoFileSelect');
+    const mangoId = document.getElementById('mangoId');
+    const mangoRenameBtn = document.getElementById('mangoRenameBtn');
+    const mangoResult = document.getElementById('mangoResult');
+
+    function hasPlatformId(name) {
+      // 已有 _id 形式的平台标识 → 不显示
+      return /_[a-z][a-z0-9]{9,11}(?:\.|$)/i.test(name)   // _r4101dsk6f5 腾讯vid
+        || /_\d{8,16}(?:\.|$)/.test(name)                 // _8544369800503000 爱奇艺tvid
+        || /_BV[0-9A-Za-z]+/i.test(name)                  // _BVxxx B站
+        || /_ep\d{4,}/i.test(name)                         // _epXXXX B站ep
+        || /_mango_/.test(name);                           // _mango_xxx 芒果
+    }
+    async function loadMangoFiles() {
+      try {
+        const files = await api('/api/video-files');
+        mangoFileSelect.innerHTML = '<option value="">-- 请选择文件 --</option>';
+        files.filter(f => !hasPlatformId(f.name)).forEach(f => {
+          const o = document.createElement('option'); o.value = f.path; o.textContent = f.name;
+          mangoFileSelect.appendChild(o);
+        });
+      } catch {}
+    }
+    loadMangoFiles();
+    mangoFileSelect.addEventListener('change', () => { if (mangoFileSelect.value) mangoFilePath.value = mangoFileSelect.value; });
+
+    mangoRenameBtn.addEventListener('click', async () => {
+      const filePath = mangoFilePath.value.trim();
+      const rawId = mangoId.value.trim();
+      if (!filePath || !rawId) return alert('请选择文件并输入 弹幕地址 或 HHMMSS/videoId');
+      // 支持完整URL或 HHMMSS/videoId
+      const urlMatch = rawId.match(/\/bullet\/tx\/\d{4}\/\d{2}\/\d{2}\/(\d{6})\/(\d{7,8})\//);
+      const extractedId = urlMatch ? urlMatch[1] + '/' + urlMatch[2] : rawId;
+      if (!/^\d{6}\/\d{7,8}$/.test(extractedId)) return alert('格式应为 HHMMSS/videoId，如 004358/3918161');
+      mangoRenameBtn.disabled = true;
+      mangoRenameBtn.textContent = '处理中...';
+      try {
+        const data = await api('/api/rename/mango', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath, mangoId: extractedId }) });
+        mangoResult.textContent = '已重命名: ' + data.newName;
+        loadMangoFiles();
+        mangoFilePath.value = '';
+        mangoId.value = '';
+      } catch (err) {
+        mangoResult.textContent = '错误：' + err.message;
+      }
+      mangoRenameBtn.disabled = false;
+      mangoRenameBtn.textContent = '重命名';
     });
 
     // ---- 视频转换（不变） ----
