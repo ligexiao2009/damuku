@@ -6,160 +6,129 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>剧集批量重命名工具</title>
   <style>
+    :root {
+      --primary: #6366f1; --primary-hover: #4f46e5; --primary-light: #e0e7ff;
+      --bg: #f8fafc; --surface: #ffffff; --text-main: #0f172a; --text-muted: #64748b;
+      --border: #e2e8f0; --radius-lg: 16px; --radius-md: 10px; --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+      --font-family: 'Inter', system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: white;
-      padding: 30px;
-      max-width: 900px;
-      margin: auto;
+      font-family: var(--font-family); background: var(--bg); color: var(--text-main);
+      line-height: 1.5; padding: 40px 20px; max-width: 800px; margin: 0 auto;
     }
-
-    h1 {
-      text-align: center;
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+    .header-title { display: flex; align-items: center; gap: 10px; }
+    .header-title svg { width: 24px; height: 24px; color: var(--primary); }
+    .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .home-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: 13px;
+      font-weight: 500; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-main); cursor: pointer;
+      box-shadow: var(--shadow-sm); transition: all 0.2s ease; text-decoration: none;
     }
+    .home-btn:hover { background: var(--bg); border-color: #cbd5e1; }
+    .home-btn svg { width: 16px; height: 16px; }
 
     .card {
-      background: #1e1e1e;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+      background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+      border: 1px solid rgba(255,255,255,0.5); padding: 24px;
     }
+    .card + .card { margin-top: 20px; }
 
-    label {
-      display: block;
-      margin-top: 15px;
-      margin-bottom: 8px;
-    }
-
+    label { display: block; margin-top: 14px; margin-bottom: 6px; font-size: 13px; font-weight: 500; }
     input, select {
-      width: 100%;
-      padding: 12px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      background: #2b2f3a;
-      color: white;
-      box-sizing: border-box;
+      width: 100%; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font-family);
+      background: var(--surface); color: var(--text-main); transition: border-color 0.2s;
+      box-shadow: var(--shadow-sm);
     }
+    input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+    input::placeholder { color: var(--text-muted); }
 
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 200px;
-      gap: 10px;
-      align-items: center;
-    }
+    .row { display: grid; grid-template-columns: 1fr 200px; gap: 10px; align-items: start; }
+    .source-row { display: flex; gap: 10px; align-items: center; }
+    .source-row select { width: 160px; }
 
-    button {
-      margin-top: 20px;
-      width: 100%;
-      padding: 14px;
-      border: none;
-      border-radius: 10px;
-      background: #ff6699;
-      color: white;
-      font-size: 16px;
-      cursor: pointer;
+    button.action {
+      margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: var(--radius-sm);
+      background: var(--primary); color: white; font-size: 14px; font-weight: 600;
+      font-family: var(--font-family); cursor: pointer; transition: background 0.2s, transform 0.1s;
+      box-shadow: var(--shadow-sm);
     }
-
-    button:hover {
-      opacity: 0.9;
-    }
+    button.action:hover { background: var(--primary-hover); }
+    button.action:active { transform: scale(0.98); }
 
     pre {
-      background: black;
-      padding: 15px;
-      border-radius: 10px;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      margin-top: 20px;
+      background: #f1f5f9; padding: 14px; border-radius: var(--radius-sm); overflow-x: auto;
+      white-space: pre-wrap; margin-top: 18px; font-size: 12px; color: var(--text-muted);
+      border: 1px solid var(--border);
     }
+    .hint { margin-top: 6px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 
-    .hint {
-      margin-top: 8px;
-      color: #aaa;
-      font-size: 12px;
-      line-height: 1.5;
-    }
+    .status-bar-inline { margin-top: 12px; padding: 10px 14px; background: #f1f5f9; border-radius: var(--radius-sm); font-size: 13px; }
+    .status-bar-inline .done { color: #16a34a; }
+    .status-bar-inline .error { color: #ef4444; }
+    .status-bar-inline .running { color: #d97706; }
 
-    .secondary-btn {
-      margin-top: 0;
-      width: 100%;
-      background: #2b2f3a;
-    }
+    .progress-wrap { margin-top: 8px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .progress-bar { height: 100%; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 3px; transition: width 0.5s ease; }
 
-    .card + .card {
-      margin-top: 20px;
-    }
-
-    .status-bar-inline {
-      margin-top: 12px;
-      padding: 10px 14px;
-      background: #2b2f3a;
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.5;
-      min-height: 20px;
-    }
-
-    .status-bar-inline .done { color: #4ade80; }
-    .status-bar-inline .error { color: #f87171; }
-    .status-bar-inline .running { color: #facc15; }
-
-    .progress-wrap {
-      margin-top: 8px;
-      height: 6px;
-      background: #2b2f3a;
-      border-radius: 3px;
-      overflow: hidden;
-    }
-
-    .progress-bar {
-      height: 100%;
-      background: linear-gradient(135deg, #22c55e, #16a34a);
-      border-radius: 3px;
-      transition: width 0.5s ease;
+    @media (max-width: 540px) {
+      body { padding: 20px 12px; }
+      .card { padding: 16px; }
+      .row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 
 <body>
-  <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap;">
-    <h1 style="margin:0;">剧集批量重命名工具</h1>
-    <button onclick="location.href='/video.html'" style="margin:0; width:auto; padding:8px 14px; font-size:14px; background:#2b2f3a; line-height:1;" title="主页">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12L12 3l9 9"/><path d="M5 10v11h14V10"/><path d="M9 21V13h6v8"/></svg>
-    </button>
+  <div class="header">
+    <div class="header-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+      <h1>剧集批量重命名工具</h1>
+    </div>
+    <a href="/" class="home-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12L12 3l9 9"/><path d="M5 10v11h14V10"/><path d="M9 21V13h6v8"/></svg>
+      首页
+    </a>
   </div>
 
   <div class="card">
+    <label>视频平台</label>
+    <select id="sourceSelect">
+      <option value="iqiyi" selected>爱奇艺</option>
+      <option value="tencent">腾讯视频</option>
+      <option value="bili">B站</option>
+    </select>
+
     <label>本地视频文件夹路径</label>
     <div class="row">
-      <input type="text" id="folderPath" placeholder="例如 /Users/yang/Downloads/长安的荔枝">
-      <select id="folderSelect">
-        <option value="">-- 加载中... --</option>
-      </select>
+      <input type="text" id="folderPath" placeholder="例如 /Users/yang/video/低智商犯罪">
+      <select id="folderSelect"><option value="">-- 加载中... --</option></select>
     </div>
-    <div class="hint" id="folderHint">从右侧下拉框选择服务器目录可自动填入路径，也可手动输入。</div>
+    <div class="hint">从右侧下拉框选择服务器目录可自动填入路径，也可手动输入。</div>
 
-    <label>B站任意剧集链接（ep链接）</label>
-    <input type="text" id="biliUrl" placeholder="例如 https://www.bilibili.com/bangumi/play/ep473314">
+    <label id="idLabel">B站剧集链接</label>
+    <input type="text" id="idInput" placeholder="例如 https://www.bilibili.com/bangumi/play/ep473314">
 
-    <button id="renameBtn">开始批量重命名</button>
-
-    <pre id="result">等待操作...</pre>
+    <button id="renameBtn" class="action">开始批量重命名</button>
+    <pre id="resultBox">等待操作...</pre>
   </div>
 
   <div class="card">
-    <h2 style="margin:0 0 8px; font-size:18px;">爱奇艺批量重命名</h2>
-    <label>本地视频文件夹路径</label>
-    <input type="text" id="iqiyiFolderPath" placeholder="例如 /Users/yang/video/低智商犯罪" onchange="document.getElementById('iqiyiFolderSelect').value=''">
-    <div class="hint">从右侧下拉框选择服务器目录可自动填入路径，也可手动输入。</div>
-
-    <label>任意一集的 16 位 tvid</label>
-    <input type="text" id="iqiyiTvid" placeholder="例如 4928206159037400">
-
-    <button id="iqiyiRenameBtn">开始批量重命名</button>
-    <pre id="iqiyiResult">等待操作...</pre>
+    <h2 style="margin:0 0 8px; font-size:18px;">芒果TV 单文件重命名</h2>
+    <label>选择视频文件</label>
+    <div class="row">
+      <input type="text" id="mangoFilePath" placeholder="例如 /Volumes/video/20170430-第2期.mp4">
+      <select id="mangoFileSelect"><option value="">-- 加载中... --</option></select>
+    </div>
+    <label>芒果弹幕地址 或 HHMMSS/videoId</label>
+    <input type="text" id="mangoId" placeholder="例如 https://bullet-ws.hitv.com/bullet/tx/2026/05/25/171519/20051653/1.json">
+    <button id="mangoRenameBtn" class="action">重命名</button>
+    <pre id="mangoResult"></pre>
   </div>
 
   <div class="card">
@@ -167,21 +136,21 @@
     <label>视频文件路径</label>
     <div class="row">
       <input type="text" id="convertFilePath" placeholder="例如 /Users/yang/video/视频.mkv">
-      <select id="convertFolderSelect">
-        <option value="">-- 加载中... --</option>
-      </select>
+      <select id="convertFolderSelect"><option value="">-- 加载中... --</option></select>
     </div>
     <div class="hint">从右侧下拉框选择视频文件自动填入路径。输出文件在同目录下，文件名加 _browser.mp4 后缀。</div>
-
-    <button id="convertBtn">开始转换</button>
+    <button id="convertBtn" class="action">开始转换</button>
     <div class="status-bar-inline" id="convertStatus" style="display:none;"></div>
   </div>
 
   <script>
-    const renameBtn = document.getElementById('renameBtn');
-    const resultBox = document.getElementById('result');
+    const sourceSelect = document.getElementById('sourceSelect');
+    const idLabel = document.getElementById('idLabel');
+    const idInput = document.getElementById('idInput');
     const folderPathInput = document.getElementById('folderPath');
     const folderSelect = document.getElementById('folderSelect');
+    const renameBtn = document.getElementById('renameBtn');
+    const resultBox = document.getElementById('resultBox');
 
     async function api(url, options) {
       const res = await fetch(url, options);
@@ -190,240 +159,197 @@
       return json.data;
     }
 
-    async function loadFolders() {
-      try {
-        const folders = await api('/api/folders');
-        folderSelect.innerHTML = '<option value=””>-- 请选择目录 --</option>';
-        if (!folders || folders.length === 0) {
-          folderSelect.innerHTML = '<option value=””>-- 无可用目录 --</option>';
-          return;
-        }
-        folders.forEach(f => {
-          const opt = document.createElement('option');
-          opt.value = f.path;
-          opt.textContent = f.name;
-          folderSelect.appendChild(opt);
-        });
-      } catch (err) {
-        console.error('获取文件夹列表失败:', err);
-        folderSelect.innerHTML = '<option value=””>-- 加载失败 --</option>';
+    const sourceConfig = {
+      bili: { label: 'B站剧集链接', placeholder: '例如 https://www.bilibili.com/bangumi/play/ep473314', endpoint: '/api/rename' },
+      iqiyi: { label: '任意一集的 tvid（8-16位数字）', placeholder: '例如 103405000', endpoint: '/api/rename/iqiyi' },
+      tencent: { label: '腾讯视频 cid 或任意一集 vid', placeholder: 'cid 例如 mzc00200umueb9v  或 vid 例如 i0033qa01p1', endpoint: '/api/rename/tencent' },
+    };
+
+    function updateSourceUI() {
+      const src = sourceSelect.value;
+      const cfg = sourceConfig[src];
+      idLabel.textContent = cfg.label;
+      idInput.placeholder = cfg.placeholder;
+      // 重置输入
+      idInput.value = '';
+    }
+
+    async function rescanFolder() {
+      const dir = folderSelect.value;
+      if (!dir) return;
+      const src = sourceSelect.value;
+      if (src === 'iqiyi') {
+        try {
+          const files = await api('/api/video-files?folder=' + encodeURIComponent(dir));
+          for (const f of files) {
+            const m = f.name.match(/\d{8,16}/);
+            if (m) { idInput.value = m[0]; idInput.style.background = '#fee2e2'; idInput.style.borderColor = '#ef4444'; setTimeout(() => { idInput.style.background = ''; idInput.style.borderColor = ''; }, 2000); break; }
+          }
+        } catch {}
+      }
+      if (src === 'tencent') {
+        try {
+          const files = await api('/api/video-files?folder=' + encodeURIComponent(dir));
+          for (const f of files) {
+            const m = f.name.match(/(?:^|[_\s-])([a-z][a-z0-9]{9,11})(?=$|[_\s-.])/i);
+            if (m) { idInput.value = m[1]; idInput.style.background = '#e0e7ff'; idInput.style.borderColor = '#6366f1'; setTimeout(() => { idInput.style.background = ''; idInput.style.borderColor = ''; }, 2000); break; }
+          }
+        } catch {}
       }
     }
 
-    folderSelect.addEventListener('change', () => {
-      const dir = folderSelect.value;
-      if (dir) folderPathInput.value = dir;
-    });
+    sourceSelect.addEventListener('change', () => { updateSourceUI(); rescanFolder(); });
+    updateSourceUI();
 
+    // 文件夹列表
+    async function loadFolders() {
+      try {
+        const folders = await api('/api/folders');
+        folderSelect.innerHTML = '<option value="">-- 请选择目录 --</option>';
+        folders.forEach(f => { const o = document.createElement('option'); o.value = f.path; o.textContent = f.name; folderSelect.appendChild(o); });
+      } catch {
+        folderSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
+      }
+    }
+    folderSelect.addEventListener('change', async () => {
+      const dir = folderSelect.value;
+      if (!dir) return;
+      folderPathInput.value = dir;
+      rescanFolder();
+    });
     loadFolders();
 
+    // 重命名
+    renameBtn.addEventListener('click', async () => {
+      const folderPath = folderPathInput.value.trim();
+      const id = idInput.value.trim();
+      if (!folderPath || !id) return alert('请填写完整信息');
+
+      const src = sourceSelect.value;
+      const endpoint = sourceConfig[src].endpoint;
+      const body = src === 'bili' ? { folderPath, biliUrl: id }
+        : src === 'iqiyi' ? { folderPath, tvid: id }
+        : { folderPath, cidOrVid: id };
+
+      resultBox.textContent = '处理中...';
+      try {
+        const data = await api(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        resultBox.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        resultBox.textContent = '错误：' + err.message;
+      }
+    });
+
+    // ---- 芒果TV 单文件重命名 ----
+    const mangoFilePath = document.getElementById('mangoFilePath');
+    const mangoFileSelect = document.getElementById('mangoFileSelect');
+    const mangoId = document.getElementById('mangoId');
+    const mangoRenameBtn = document.getElementById('mangoRenameBtn');
+    const mangoResult = document.getElementById('mangoResult');
+
+    function hasPlatformId(name) {
+      // 已有 _id 形式的平台标识 → 不显示
+      return /_[a-z][a-z0-9]{9,11}(?:\.|$)/i.test(name)   // _r4101dsk6f5 腾讯vid
+        || /_\d{8,16}(?:\.|$)/.test(name)                 // _8544369800503000 爱奇艺tvid
+        || /_BV[0-9A-Za-z]+/i.test(name)                  // _BVxxx B站
+        || /_ep\d{4,}/i.test(name)                         // _epXXXX B站ep
+        || /_mango_/.test(name);                           // _mango_xxx 芒果
+    }
+    async function loadMangoFiles() {
+      try {
+        const files = await api('/api/video-files');
+        mangoFileSelect.innerHTML = '<option value="">-- 请选择文件 --</option>';
+        files.filter(f => !hasPlatformId(f.name)).forEach(f => {
+          const o = document.createElement('option'); o.value = f.path; o.textContent = f.name;
+          mangoFileSelect.appendChild(o);
+        });
+      } catch {}
+    }
+    loadMangoFiles();
+    mangoFileSelect.addEventListener('change', () => { if (mangoFileSelect.value) mangoFilePath.value = mangoFileSelect.value; });
+
+    mangoRenameBtn.addEventListener('click', async () => {
+      const filePath = mangoFilePath.value.trim();
+      const rawId = mangoId.value.trim();
+      if (!filePath || !rawId) return alert('请选择文件并输入 弹幕地址 或 HHMMSS/videoId');
+      // 支持完整URL或 HHMMSS/videoId
+      const urlMatch = rawId.match(/\/bullet\/tx\/\d{4}\/\d{2}\/\d{2}\/(\d{6})\/(\d{7,8})\//);
+      const extractedId = urlMatch ? urlMatch[1] + '/' + urlMatch[2] : rawId;
+      if (!/^\d{6}\/\d{7,8}$/.test(extractedId)) return alert('格式应为 HHMMSS/videoId，如 004358/3918161');
+      mangoRenameBtn.disabled = true;
+      mangoRenameBtn.textContent = '处理中...';
+      try {
+        const data = await api('/api/rename/mango', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath, mangoId: extractedId }) });
+        mangoResult.textContent = '已重命名: ' + data.newName;
+        loadMangoFiles();
+        mangoFilePath.value = '';
+        mangoId.value = '';
+      } catch (err) {
+        mangoResult.textContent = '错误：' + err.message;
+      }
+      mangoRenameBtn.disabled = false;
+      mangoRenameBtn.textContent = '重命名';
+    });
+
+    // ---- 视频转换（不变） ----
     const convertBtn = document.getElementById('convertBtn');
     const convertFilePathInput = document.getElementById('convertFilePath');
     const convertFolderSelect = document.getElementById('convertFolderSelect');
     const convertStatus = document.getElementById('convertStatus');
 
-    async function loadConvertFolders() {
+    (async () => {
       try {
         const files = await api('/api/video-files');
         convertFolderSelect.innerHTML = '<option value="">-- 请选择视频文件 --</option>';
-        if (!files || files.length === 0) {
-          convertFolderSelect.innerHTML = '<option value="">-- 无视频文件 --</option>';
-          return;
-        }
-        files.forEach(f => {
-          const opt = document.createElement('option');
-          opt.value = f.path;
-          opt.textContent = f.name;
-          convertFolderSelect.appendChild(opt);
-        });
-      } catch (err) {
-        convertFolderSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
-      }
-    }
-
-    convertFolderSelect.addEventListener('change', () => {
-      const filePath = convertFolderSelect.value;
-      if (filePath) convertFilePathInput.value = filePath;
-    });
-
-    loadConvertFolders();
+        files.forEach(f => { const o = document.createElement('option'); o.value = f.path; o.textContent = f.name; convertFolderSelect.appendChild(o); });
+      } catch {}
+    })();
+    convertFolderSelect.addEventListener('change', () => { if (convertFolderSelect.value) convertFilePathInput.value = convertFolderSelect.value; });
 
     let pollingTimer = null;
-
     async function loadConvertHistory() {
       try {
         const history = await api('/api/convert/history');
-        if (!history || history.length === 0) return;
-
+        if (!history || !history.length) return;
         const last = history[0];
-        if (last.status === 'running' || last.status === 'probing') {
-          convertBtn.disabled = true;
-          convertStatus.style.display = 'block';
-          startPolling(last.id);
-        } else if (last.status === 'interrupted') {
-          convertStatus.style.display = 'block';
-          convertFilePathInput.value = last.input || '';
-          convertStatus.innerHTML = `<span class="error">上次转换中断（服务器重启），可重新提交: ${escapeHtml(last.input)}</span>`;
-        } else if (last.status === 'done') {
-          const elapsed = last.endTime ? Math.round((last.endTime - last.startTime) / 1000) : 0;
-          convertStatus.style.display = 'block';
-          convertStatus.innerHTML = `<span class="done">上次转换完成，耗时 ${formatTime(elapsed)}: ${escapeHtml(last.output)}</span>`;
-        } else if (last.status === 'error') {
-          convertStatus.style.display = 'block';
-          convertStatus.innerHTML = `<span class="error">上次转换失败: ${escapeHtml(last.error || '未知错误')}</span>`;
-        }
+        if (last.status === 'running' || last.status === 'probing') { convertBtn.disabled = true; convertStatus.style.display = 'block'; startPolling(last.id); }
+        else if (last.status === 'interrupted') { convertStatus.style.display = 'block'; convertFilePathInput.value = last.input || ''; convertStatus.innerHTML = '<span class=error>上次转换中断（服务器重启），可重新提交: ' + escapeHtml(last.input) + '</span>'; }
+        else if (last.status === 'done') { const e = last.endTime ? Math.round((last.endTime - last.startTime) / 1000) : 0; convertStatus.style.display = 'block'; convertStatus.innerHTML = '<span class=done>上次转换完成，耗时 ' + formatTime(e) + ': ' + escapeHtml(last.output) + '</span>'; }
+        else if (last.status === 'error') { convertStatus.style.display = 'block'; convertStatus.innerHTML = '<span class=error>上次转换失败: ' + escapeHtml(last.error || '未知错误') + '</span>'; }
       } catch {}
     }
-
     function startPolling(taskId) {
       if (pollingTimer) clearInterval(pollingTimer);
       pollingTimer = setInterval(async () => {
         try {
-          const st = await api(`/api/convert/status?id=${encodeURIComponent(taskId)}`);
-          if (st.status === 'interrupted') {
-            clearInterval(pollingTimer);
-            convertFilePathInput.value = st.input || '';
-            convertStatus.innerHTML = `<span class="error">转换已中断（服务器重启），可重新提交: ${escapeHtml(st.input)}</span>`;
-            convertBtn.disabled = false;
-          } else if (st.status === 'done') {
-            clearInterval(pollingTimer);
-            const elapsed = st.endTime ? Math.round((st.endTime - st.startTime) / 1000) : 0;
-            convertStatus.innerHTML = `<span class="done">转换完成，耗时 ${formatTime(elapsed)}: ${escapeHtml(st.output)}</span>`;
-            convertBtn.disabled = false;
-          } else if (st.status === 'error') {
-            clearInterval(pollingTimer);
-            convertStatus.innerHTML = `<span class="error">转换失败: ${escapeHtml(st.error || '未知错误')}</span>`;
-            convertBtn.disabled = false;
-          } else if (st.status === 'probing') {
-            convertStatus.innerHTML = '<span class="running">正在获取视频信息...</span>';
-          } else {
-            const cur = formatTime(st.progress || 0);
-            const pct = st.duration ? Math.min(100, Math.round((st.progress / st.duration) * 100)) : 0;
-            const total = formatTime(st.duration || 0);
-            let eta = '';
-            if (st.progress > 0 && st.duration) {
-              const elapsed = (Date.now() - st.startTime) / 1000;
-              const remaining = Math.max(0, Math.round((st.duration - st.progress) * elapsed / st.progress));
-              eta = ` 剩余 ${formatTime(remaining)}`;
-            }
-            const bar = st.duration ? `<div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>` : '';
-            convertStatus.innerHTML = `<span class="running">正在转换 ${pct}% (${cur} / ${total})${eta}</span>${bar}`;
-          }
-        } catch {
-          clearInterval(pollingTimer);
-          convertStatus.innerHTML = '<span class="error">状态查询失败</span>';
-          convertBtn.disabled = false;
-        }
+          const st = await api('/api/convert/status?id=' + encodeURIComponent(taskId));
+          if (st.status === 'interrupted') { clearInterval(pollingTimer); convertFilePathInput.value = st.input || ''; convertStatus.innerHTML = '<span class=error>转换已中断（服务器重启），可重新提交: ' + escapeHtml(st.input) + '</span>'; convertBtn.disabled = false; }
+          else if (st.status === 'done') { clearInterval(pollingTimer); const e = st.endTime ? Math.round((st.endTime - st.startTime) / 1000) : 0; convertStatus.innerHTML = '<span class=done>转换完成，耗时 ' + formatTime(e) + ': ' + escapeHtml(st.output) + '</span>'; convertBtn.disabled = false; }
+          else if (st.status === 'error') { clearInterval(pollingTimer); convertStatus.innerHTML = '<span class=error>转换失败: ' + escapeHtml(st.error || '未知错误') + '</span>'; convertBtn.disabled = false; }
+          else if (st.status === 'probing') { convertStatus.innerHTML = '<span class=running>正在获取视频信息...</span>'; }
+          else { const pct = st.duration ? Math.min(100, Math.round((st.progress / st.duration) * 100)) : 0; let eta = ''; if (st.progress > 0 && st.duration) { const el = (Date.now() - st.startTime) / 1000; eta = ' 剩余 ' + formatTime(Math.max(0, Math.round((st.duration - st.progress) * el / st.progress))); } const bar = st.duration ? '<div class=progress-wrap><div class=progress-bar style=width:' + pct + '%></div></div>' : ''; convertStatus.innerHTML = '<span class=running>正在转换 ' + pct + '% (' + formatTime(st.progress||0) + ' / ' + formatTime(st.duration||0) + ')' + eta + '</span>' + bar; }
+        } catch { clearInterval(pollingTimer); convertStatus.innerHTML = '<span class=error>状态查询失败</span>'; convertBtn.disabled = false; }
       }, 1000);
     }
-
     loadConvertHistory();
-
     convertBtn.addEventListener('click', async () => {
       const filePath = convertFilePathInput.value.trim();
       if (!filePath) return alert('请输入视频文件路径');
-
-      convertBtn.disabled = true;
-      convertStatus.style.display = 'block';
-      convertStatus.innerHTML = '<span class="running">正在获取视频信息...</span>';
-
+      convertBtn.disabled = true; convertStatus.style.display = 'block'; convertStatus.innerHTML = '<span class=running>正在获取视频信息...</span>';
       try {
-        const data = await api('/api/convert', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePath })
-        });
-
+        const data = await api('/api/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath }) });
         startPolling(data.taskId);
-      } catch (err) {
-        convertStatus.innerHTML = `<span class="error">${escapeHtml(err.message)}</span>`;
-        convertBtn.disabled = false;
-      }
+      } catch (err) { convertStatus.innerHTML = '<span class=error>' + escapeHtml(err.message) + '</span>'; convertBtn.disabled = false; }
     });
 
-    function formatTime(seconds) {
-      if (!seconds || seconds <= 0) return '0秒';
-      const h = Math.floor(seconds / 3600);
-      const m = Math.floor((seconds % 3600) / 60);
-      const s = seconds % 60;
-      if (h > 0) return `${h}时${m}分${s}秒`;
-      if (m > 0) return `${m}分${s}秒`;
-      return `${s}秒`;
+    function formatTime(s) {
+      if (!s || s <= 0) return '0秒';
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+      if (h > 0) return h + '时' + m + '分' + sec + '秒';
+      if (m > 0) return m + '分' + sec + '秒';
+      return sec + '秒';
     }
-
-    function escapeHtml(text) {
-      return String(text || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    }
-
-    // ---- 爱奇艺批量重命名 ----
-    const iqiyiRenameBtn = document.getElementById('iqiyiRenameBtn');
-    const iqiyiResult = document.getElementById('iqiyiResult');
-    const iqiyiFolderPath = document.getElementById('iqiyiFolderPath');
-    const iqiyiTvid = document.getElementById('iqiyiTvid');
-
-    // 文件夹下拉同步到爱奇艺输入框
-    const iqiyiFolderSelect = document.createElement('select');
-    iqiyiFolderSelect.style.cssText = 'margin-top:6px;width:100%;padding:10px;border:none;border-radius:8px;font-size:14px;background:#2b2f3a;color:#aaa;';
-    iqiyiFolderSelect.innerHTML = '<option value="">-- 选择服务器目录 --</option>';
-    iqiyiFolderPath.parentNode.insertBefore(iqiyiFolderSelect, iqiyiFolderPath.nextSibling);
-    (async () => {
-      try {
-        const folders = await api('/api/folders');
-        folders.forEach(f => { const o = document.createElement('option'); o.value = f.path; o.textContent = f.name; iqiyiFolderSelect.appendChild(o); });
-      } catch {}
-    })();
-    iqiyiFolderSelect.addEventListener('change', () => { if (iqiyiFolderSelect.value) iqiyiFolderPath.value = iqiyiFolderSelect.value; });
-
-    iqiyiRenameBtn.addEventListener('click', async () => {
-      const folderPath = iqiyiFolderPath.value.trim();
-      const tvid = iqiyiTvid.value.trim();
-      if (!folderPath || !tvid) return alert('请填写文件夹路径和 tvid');
-      iqiyiResult.textContent = '处理中...';
-      try {
-        const data = await api('/api/rename/iqiyi', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folderPath, tvid })
-        });
-        iqiyiResult.textContent = JSON.stringify(data, null, 2);
-      } catch (err) {
-        iqiyiResult.textContent = `错误：${err.message}`;
-      }
-    });
-
-    renameBtn.addEventListener('click', async () => {
-      const folderPath = folderPathInput.value.trim();
-      const biliUrl = document.getElementById('biliUrl').value.trim();
-
-      if (!folderPath || !biliUrl) {
-        alert('请填写完整信息');
-        return;
-      }
-
-      resultBox.textContent = '处理中，请稍候...';
-
-      try {
-        const data = await api('/api/rename', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            folderPath,
-            biliUrl
-          })
-        });
-
-        resultBox.textContent = JSON.stringify(data, null, 2);
-
-      } catch (err) {
-        resultBox.textContent = `错误：${err.message}`;
-      }
-    });
+    function escapeHtml(t) { return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   </script>
 </body>
-
 </html>

@@ -24,7 +24,7 @@ function createOverlayWindow(display) {
   const { x, y, width, height } = display.bounds;
 
   const win = new BrowserWindow({
-    x, y, width, height,
+    x, y,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -37,7 +37,9 @@ function createOverlayWindow(display) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
-    }
+    },
+    width,height,
+    icon: path.join(__dirname, '../public/Danmu.iconset') 
   });
 
   win.setIgnoreMouseEvents(true, { forward: true });

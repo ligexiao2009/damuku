@@ -7,14 +7,20 @@ const {
   resolveFileInside,
   isVideoExt
 } = require('../utils/file');
-const { FOLDERS_BASE, CONVERT_HISTORY_FILE } = require('./constants');
+const { FOLDERS_BASE, FOLDERS_BASES, CONVERT_HISTORY_FILE } = require('./constants');
 const logger = require('../utils/logger');
 
 function resolveLibraryDirectory(targetPath) {
-  return resolveDirectoryInside(targetPath, FOLDERS_BASE);
+  for (const base of FOLDERS_BASES) {
+    try { return resolveDirectoryInside(targetPath, base); } catch {}
+  }
+  return resolveDirectoryInside(targetPath, FOLDERS_BASE); // fallback for error msg
 }
 
 function resolveLibraryFile(targetPath) {
+  for (const base of FOLDERS_BASES) {
+    try { return resolveFileInside(targetPath, base); } catch {}
+  }
   return resolveFileInside(targetPath, FOLDERS_BASE);
 }
 

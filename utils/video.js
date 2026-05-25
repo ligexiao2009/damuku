@@ -25,12 +25,20 @@ function detectVideoIdFromName(name) {
   return '';
 }
 
-/** 从文件名中提取爱奇艺 16 位 tvid，未匹配返回 ''。 */
+/** 从文件名中提取爱奇艺 tvid（8-16 位数字，兼容早期短ID），未匹配返回 ''。 */
 function detectIqiyiTvidFromName(name) {
   if (!name) return '';
   const base = path.basename(name, path.extname(name));
-  const m = base.match(/(\d{16})/);
-  return m ? m[1] : '';
+  // 匹配 8-16 位数字，但排除年份（以 19 或 20 开头）、纯日期格式
+  const m = base.match(/(\d{8,16})/g);
+  if (!m) return '';
+  for (const num of m) {
+    // 跳过年份和日期
+    if (/^(19|20)\d{2}$/.test(num)) continue;
+    if (/^(19|20)\d{6,8}$/.test(num)) continue;
+    return num;
+  }
+  return '';
 }
 
 /** 去除文件名中的非法字符，空格替换为下划线。 */
@@ -47,7 +55,9 @@ function extractEpisodeNumberFromFileName(fileName) {
   const patterns = [
     /S\d+E(\d{1,3})/i,
     /(?:^|[\s._-])EP?(\d{1,3})(?=$|[\s._-])/i,
-    /第\s*(\d{1,3})\s*[集话]/i
+    /第\s*(\d{1,3})\s*[集话]/i,
+    /^(\d{1,3})$/,
+    /^(\d{1,3})[\s._-]/,
   ];
 
   for (const pattern of patterns) {

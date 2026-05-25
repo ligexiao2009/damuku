@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const { success, fail } = require('../utils/response');
 const { decodeSafe, resolveExistingVideoPath, scanVideos, getThumbPath } = require('../utils/file');
 const { detectVideoIdFromName } = require('../utils/video');
@@ -15,7 +16,7 @@ const router = require('express').Router();
 router.get('/videos', (req, res) => {
   try {
     logger.debug('VIDEO_DIR:', state.videoDir);
-    const files = scanVideos(state.videoDir);
+    const files = scanVideos(state.videoDir).filter(f => !/\.(srt|vtt|ass|ssa)$/i.test(f));
     files.sort((a, b) =>
       a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
     );
@@ -23,6 +24,27 @@ router.get('/videos', (req, res) => {
   } catch (err) {
     logger.error(err);
     res.status(500).json(fail(500, '无法读取文件列表'));
+  }
+});
+
+// GET /api/subtitles — 扫描当前视频目录的字幕文件
+router.get('/subtitles', (req, res) => {
+  try {
+    const subtitleExts = new Set(['.srt', '.vtt', '.ass', '.ssa', '.sub']);
+    const subs = [];
+    const entries = fs.readdirSync(state.videoDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && !entry.name.startsWith('.') && subtitleExts.has(path.extname(entry.name).toLowerCase())) {
+        subs.push(entry.name);
+      }
+    }
+    subs.sort((a, b) =>
+      a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+    );
+    res.json(success(subs));
+  } catch (err) {
+    logger.error(err);
+    res.status(500).json(fail(500, '无法读取字幕文件'));
   }
 });
 

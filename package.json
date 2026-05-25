@@ -1,7 +1,7 @@
 {
   "name": "b-video-player",
-  "version": "1.2.23",
-  "description": "B站弹幕外挂 - 跨播放器通用弹幕悬浮系统",
+  "version": "1.2.29",
+  "description": "弹幕 - 跨播放器通用弹幕悬浮系统",
   "author": "b-video",
   "main": "electron/app.js",
   "scripts": {
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "axios": "^1.16.0",
+    "cheerio": "^1.2.0",
     "dayjs": "^1.11.20",
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
@@ -27,7 +28,7 @@
   },
   "build": {
     "appId": "com.bvideo.danmaku-overlay",
-    "productName": "B站弹幕外挂",
+    "productName": "弹幕",
     "files": [
       "electron/**/*",
       "public/**/*",
@@ -43,7 +44,7 @@
     "mac": {
       "category": "public.app-category.utilities",
       "target": "dmg",
-      "icon": null
+      "icon": "public/Danmu.iconset"
     },
     "win": {
       "target": "nsis"

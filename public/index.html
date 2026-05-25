@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>V-Box | 极简追剧体验</title>
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --card-bg: rgba(255, 255, 255, 0.04);
+      --card-hover: rgba(255, 255, 255, 0.08);
+      --text: #ffffff;
+      --muted: #8e99ae;
+      --accent: #ff6b8a;
+      --accent-glow: rgba(255, 107, 138, 0.3);
+      --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-main);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      overflow-x: hidden;
+    }
+
+    /* 增强背景渐变层级感 */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background: 
+        radial-gradient(circle at 15% 20%, rgba(255, 107, 138, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(77, 166, 255, 0.08) 0%, transparent 40%);
+    }
+
+    .container {
+      position: relative; z-index: 1;
+      text-align: center;
+      max-width: 850px;
+      width: 100%;
+    }
+
+    .hero { margin-bottom: 60px; animation: fadeInDown 0.8s ease-out; }
+    
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero h1 {
+      font-size: 48px; font-weight: 800; letter-spacing: -1.5px;
+      background: linear-gradient(135deg, #fff 30%, #ff6b8a 70%, #4da6ff 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+
+    .hero p { 
+      font-size: 16px; color: var(--muted); 
+      letter-spacing: 4px; font-weight: 300;
+      text-transform: uppercase;
+      opacity: 0.8;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      position: relative;
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+      padding: 40px 24px;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      text-decoration: none; color: inherit;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .card:hover {
+      background: var(--card-hover);
+      border-color: rgba(255, 107, 138, 0.4);
+      transform: translateY(-8px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 
+                  0 0 20px var(--accent-glow);
+    }
+
+    /* 图标动画 */
+    .card svg { 
+      width: 42px; height: 42px; 
+      stroke: var(--text); stroke-width: 1.5; 
+      transition: all 0.3s ease;
+    }
+
+    .card:hover svg { 
+      stroke: var(--accent); 
+      transform: scale(1.1) rotate(5deg);
+    }
+
+    .card .label { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+    
+    .card .desc { 
+      font-size: 13px; color: var(--muted); 
+      line-height: 1.6; max-width: 180px; 
+    }
+
+    /* 为移动端做些特别优化 */
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 32px; }
+      .grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .card { padding: 30px 16px; border-radius: 20px; }
+      .card .label { font-size: 15px; }
+      .card .desc { display: none; } /* 手机端隐藏描述，保持清爽 */
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <h1>V-Box</h1>
+      <p>追剧 · 弹幕 · 视频库</p>
+    </header>
+
+    <main class="grid">
+      <a href="/video.html" class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span class="label">播放器</span>
+        <span class="desc">支持弹幕悬浮与多源地址聚合播放</span>
+      </a>
+
+      <a href="/library.html" class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="label">视频库</span>
+        <span class="desc">个人剧集管理中心与精美封面墙</span>
+      </a>
+
+      <a href="/rename.html" class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+        <span class="label">重命名</span>
+        <span class="desc">强大的批量命名工具与剧集匹配</span>
+      </a>
+
+      <a href="/ipad.html" class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+        <span class="label">iPad端</span>
+        <span class="desc">针对触控优化的轻量化沉浸体验</span>
+      </a>
+
+      <a href="/manage.html" class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="label">系统管理</span>
+        <span class="desc">一键磁盘清理与深层文件管理</span>
+      </a>
+
+      <a href="/stream.html" class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+        <span class="label">直播流</span>
+        <span class="desc">输入 m3u8 链接一键播放</span>
+      </a>
+    </main>
+  </div>
+</body>
+</html>

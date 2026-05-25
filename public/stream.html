@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>直播流播放</title>
+  <style>
+    :root {
+      --primary: #6366f1; --primary-hover: #4f46e5; --primary-light: #e0e7ff;
+      --bg: #f8fafc; --surface: #fff; --text-main: #0f172a; --text-muted: #64748b;
+      --border: #e2e8f0; --radius-lg: 16px; --radius-md: 10px; --radius-sm: 8px;
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --font: 'Inter', system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font); background: var(--bg); color: var(--text-main);
+      display: flex; flex-direction: column; align-items: center;
+      min-height: 100vh; padding: 24px; gap: 20px;
+    }
+    .card {
+      background: var(--surface); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md); border: 1px solid rgba(255,255,255,0.5);
+      padding: 32px; max-width: 500px; width: 100%; text-align: center;
+    }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
+    input {
+      width: 100%; padding: 12px 16px; border: 1px solid var(--border);
+      border-radius: var(--radius-md); font-size: 13px; font-family: var(--font);
+      color: var(--text-main); outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-light); }
+    button {
+      margin-top: 16px; width: 100%; padding: 12px; border: none;
+      border-radius: var(--radius-sm); background: var(--primary); color: #fff;
+      font-size: 15px; font-weight: 600; font-family: var(--font);
+      cursor: pointer; transition: background 0.2s;
+    }
+    button:hover { background: var(--primary-hover); }
+    .history { margin-top: 24px; text-align: left; }
+    .history h3 { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+    .history a {
+      display: block; font-size: 12px; color: var(--primary); cursor: pointer;
+      padding: 6px 8px; border-radius: 6px; text-decoration: none;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .history a:hover { background: var(--primary-light); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>腾讯体育 Cookie 提取</h1>
+    <p class="sub">从 v.qq.com 直播页提取弹幕参数</p>
+    <input type="text" id="txspPageUrl" placeholder="腾讯体育直播页地址，如 https://v.qq.com/live/p/newtopic/366948/index.html">
+    <button id="txspSniffBtn">自动提取</button>
+    <div id="txspResult" style="margin-top:8px;font-size:12px;color:var(--text-muted)"></div>
+    <textarea id="txspOutput" placeholder="提取结果..." style="margin-top:12px;width:100%;height:120px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:11px;font-family:monospace;resize:vertical;background:var(--bg);color:var(--text-main);display:none;"></textarea>
+    <button id="txspCopyBtn" style="display:none;margin-top:8px;">复制结果</button>
+  </div>
+
+  <div class="card">
+    <h1>直播流播放</h1>
+    <p class="sub">粘贴网页地址自动提取 m3u8，或直接输入流地址</p>
+    <input type="text" id="pageInput" placeholder="网页地址，如 http://play.sportsteam368.com/play/j.php?id=42500222">
+    <button id="sniffBtn">提取流地址</button>
+    <div id="sniffResult" style="margin-top:8px;font-size:13px;color:var(--text-muted)"></div>
+    <input type="text" id="urlInput" placeholder="流地址 .m3u8" style="margin-top:12px;">
+    <button id="playBtn">IINA 播放</button>
+    <div class="history" id="history"></div>
+  </div>
+  <script>
+    const pageInput = document.getElementById('pageInput');
+    const sniffBtn = document.getElementById('sniffBtn');
+    const sniffResult = document.getElementById('sniffResult');
+    const input = document.getElementById('urlInput');
+    const playBtn = document.getElementById('playBtn');
+    const historyEl = document.getElementById('history');
+    const STORAGE_KEY = 'stream_history';
+
+    function loadHistory() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+      catch { return []; }
+    }
+    function saveHistory(urls) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(urls.slice(0, 20)));
+    }
+    function addHistory(url) {
+      let urls = loadHistory().filter(u => u !== url);
+      urls.unshift(url);
+      saveHistory(urls);
+      renderHistory();
+    }
+    function renderHistory() {
+      const urls = loadHistory();
+      if (!urls.length) { historyEl.innerHTML = ''; return; }
+      historyEl.innerHTML = '<h3>历史记录</h3>' + urls.map(u =>
+        '<a onclick="document.getElementById(\'urlInput\').value=this.textContent;document.getElementById(\'playBtn\').click()">' + u.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</a>'
+      ).join('');
+    }
+
+    sniffBtn.addEventListener('click', async () => {
+      const pageUrl = pageInput.value.trim();
+      if (!pageUrl) return alert('请输入网页地址');
+      sniffBtn.disabled = true;
+      sniffBtn.textContent = '提取中...';
+      sniffResult.textContent = '';
+      try {
+        const res = await fetch('/api/stream/sniff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageUrl })
+        });
+        const json = await res.json();
+        if (json.code === 0) {
+          input.value = json.data.streamUrl;
+          sniffResult.innerHTML = '<span style=color:#16a34a>已提取 (' + json.data.method + ')</span>';
+          if (location.search.includes('sniff=')) playBtn.click();
+        } else {
+          sniffResult.innerHTML = '<span style=color:#ef4444>' + json.message + '</span>';
+        }
+      } catch (err) {
+        sniffResult.innerHTML = '<span style=color:#ef4444>提取失败: ' + err.message + '</span>';
+      }
+      sniffBtn.disabled = false;
+      sniffBtn.textContent = '提取流地址';
+    });
+
+    pageInput.addEventListener('keydown', e => { if (e.key === 'Enter') sniffBtn.click(); });
+
+    // 腾讯体育自动提取
+    const txspSniffBtn = document.getElementById('txspSniffBtn');
+    const txspPageUrl = document.getElementById('txspPageUrl');
+    const txspResult = document.getElementById('txspResult');
+    const txspOutput = document.getElementById('txspOutput');
+    const txspCopyBtn = document.getElementById('txspCopyBtn');
+    // 记住上次输入的网址
+    const TXSP_URL_KEY = 'txsp_url';
+    try { const saved = localStorage.getItem(TXSP_URL_KEY); if (saved) txspPageUrl.value = saved; } catch {}
+    txspPageUrl.addEventListener('input', () => { try { localStorage.setItem(TXSP_URL_KEY, txspPageUrl.value); } catch {} });
+
+    txspSniffBtn.addEventListener('click', async () => {
+      const url = txspPageUrl.value.trim();
+      txspSniffBtn.disabled = true; txspSniffBtn.textContent = '提取中...'; txspResult.textContent = ''; txspOutput.style.display = 'none'; txspCopyBtn.style.display = 'none';
+      try {
+        const res = await fetch('/api/stream/txsp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pageUrl: url || undefined }) });
+        const json = await res.json();
+        if (json.code === 0) {
+          const d = json.data;
+          const out = JSON.stringify({ room_id: Number(d.roomId) || 0, program_id: String(d.programId || ''), cookie: d.cookie || '' }, null, 2);
+          txspOutput.value = out;
+          txspOutput.style.display = 'block';
+          txspCopyBtn.style.display = 'block';
+          txspResult.innerHTML = '<span style=color:#16a34a>已提取 ✓</span>';
+          // 同时存到服务器，overlay/ipad 打开时自动加载
+          fetch('/api/txsp/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: d.roomId, programId: d.programId, cookie: d.cookie }) }).catch(() => {});
+        } else {
+          txspResult.innerHTML = '<span style=color:#ef4444>提取失败: ' + (json.message || '') + '</span>';
+        }
+      } catch { txspResult.innerHTML = '<span style=color:#ef4444>请求失败</span>'; }
+      txspSniffBtn.disabled = false; txspSniffBtn.textContent = '自动提取';
+    });
+    txspCopyBtn.addEventListener('click', () => {
+      txspOutput.select();
+      document.execCommand('copy');
+      txspCopyBtn.textContent = '已复制 ✓';
+      setTimeout(() => { txspCopyBtn.textContent = '复制结果'; }, 2000);
+    });
+
+    playBtn.addEventListener('click', async () => {
+      const url = input.value.trim();
+      if (!url) return alert('请输入流地址');
+      addHistory(url);
+      try {
+        const res = await fetch('/api/stream/play', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        if (!res.ok) throw new Error((await res.json()).message);
+      } catch (err) {
+        alert('播放失败: ' + err.message);
+      }
+    });
+
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') playBtn.click(); });
+
+    renderHistory();
+
+    // URL 参数自动触发: ?sniff=URL 或 ?txsp=URL
+    (function() {
+      var q = new URLSearchParams(location.search);
+      var sniffUrl = q.get('sniff');
+      var txspUrl = q.get('txsp');
+      if (sniffUrl) {
+        var d = decodeURIComponent(sniffUrl);
+        document.getElementById('pageInput').value = d;
+        document.getElementById('sniffBtn').click();
+      }
+      if (txspUrl) {
+        var d = decodeURIComponent(txspUrl);
+        document.getElementById('txspPageUrl').value = d;
+        document.getElementById('txspSniffBtn').click();
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -6,7 +6,7 @@ const { sanitizeFileName, extractEpisodeNumberFromFileName, extractEpId } = requ
 const { fetchSeasonInfo } = require('../services/bilibili');
 const axios = require('axios');
 const logger = require('../utils/logger');
-const { FOLDERS_BASE } = require('../shared/constants');
+const { FOLDERS_BASE, FOLDERS_BASES } = require('../shared/constants');
 const {
   resolveLibraryDirectory,
   isPathValidationError,
@@ -20,9 +20,13 @@ const router = require('express').Router();
 // GET /api/folders
 router.get('/folders', (req, res) => {
   try {
-    const allFolders = scanFolders(FOLDERS_BASE);
-    const folders = [{ path: FOLDERS_BASE, name: '(根目录)' }]
-      .concat(allFolders.filter(f => hasDirectVideoFiles(f.path)));
+    let folders = [];
+    for (const base of FOLDERS_BASES) {
+      if (!fs.existsSync(base)) continue;
+      folders.push({ path: base, name: '(根目录)' });
+      const subs = scanFolders(base).filter(f => hasDirectVideoFiles(f.path));
+      folders = folders.concat(subs);
+    }
     res.json(success(folders));
   } catch (err) {
     logger.error(err);
@@ -45,7 +49,10 @@ router.get('/video-files', (req, res) => {
         files.push({ path: path.join(resolved, entry.name), name: entry.name });
       }
     } else {
-      files = scanVideoFiles(FOLDERS_BASE);
+      files = [];
+      for (const base of FOLDERS_BASES) {
+        files = files.concat(scanVideoFiles(base));
+      }
     }
     files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
     res.json(success(files));
@@ -155,8 +162,8 @@ router.post('/rename/iqiyi', async (req, res) => {
       const ext = path.extname(fname);
       const base = path.basename(fname, ext);
 
-      // 已含 16 位 tvid，跳过
-      if (/\d{16}/.test(base)) continue;
+      // 已含 tvid（8-16 位数字），跳过
+      if (/\d{8,16}/.test(base)) continue;
 
       const epNum = extractEpisodeNumberFromFileName(fname);
       if (epNum == null || !epMap[epNum]) continue;
@@ -168,6 +175,98 @@ router.post('/rename/iqiyi', async (req, res) => {
     }
 
     res.json(success({ albumId, totalEpisodes: episodes.length, renamedFiles }));
+  } catch (err) {
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, err.message || '重命名失败'));
+  }
+});
+
+// POST /api/rename/tencent — 腾讯视频批量重命名
+router.post('/rename/tencent', async (req, res) => {
+  try {
+    const { folderPath, cidOrVid } = req.body || {};
+    if (!folderPath || !cidOrVid) return res.status(400).json(fail(400, '缺少参数'));
+
+    const safeFolder = resolveLibraryDirectory(folderPath);
+    const { fetchTencentVideoDetail, fetchCidByVid } = require('../services/tencent_detail');
+
+    let cid = cidOrVid, vid = '';
+    // 判断是 cid 还是 vid：cid 以 mzc 或 mcv 开头
+    if (!/^m[zc]/.test(cidOrVid) && /^[a-z][a-z0-9]{9,11}$/i.test(cidOrVid)) {
+      vid = cidOrVid;
+      cid = await fetchCidByVid(vid);
+      if (!cid) return res.status(400).json(fail(400, '未找到对应 cid，请检查 vid 是否正确'));
+    }
+
+    const detail = await fetchTencentVideoDetail(cid, vid);
+    if (!detail || !detail.episodes.length) return res.status(400).json(fail(400, '未获取到剧集信息'));
+
+    // 扫描文件夹
+    const videoExts = new Set(['.mp4', '.mkv', '.mov', '.webm', '.avi', '.m4v']);
+    const files = fs.readdirSync(safeFolder).filter(f => videoExts.has(path.extname(f).toLowerCase()));
+
+    // 构建集号 → vid 的映射
+    const epMap = {};
+    for (const ep of detail.episodes) {
+      const num = ep.episode || parseInt(ep.title, 10) || 0;
+      if (num > 0) epMap[num] = ep.vid;
+    }
+
+    const renamedFiles = [];
+    for (const fname of files) {
+      const ext = path.extname(fname);
+      const base = path.basename(fname, ext);
+
+      // 已含 vid，跳过
+      if (/[a-z][a-z0-9]{9,11}/i.test(base)) continue;
+
+      const epNum = extractEpisodeNumberFromFileName(fname);
+      if (epNum == null || !epMap[epNum]) continue;
+
+      const vidVal = epMap[epNum];
+      const newName = base + '_' + vidVal + ext;
+      fs.renameSync(path.join(safeFolder, fname), path.join(safeFolder, newName));
+      renamedFiles.push({ oldName: fname, newName, episode: epNum, vid: vidVal });
+    }
+
+    res.json(success({ cid, totalEpisodes: detail.episodes.length, renamedFiles }));
+  } catch (err) {
+    const status = isPathValidationError(err) ? 400 : 500;
+    if (status === 500) logger.error(err);
+    res.status(status).json(fail(status, err.message || '重命名失败'));
+  }
+});
+
+// POST /api/rename/mango — 芒果TV单文件重命名
+router.post('/rename/mango', (req, res) => {
+  try {
+    const { filePath, mangoId } = req.body || {};
+    if (!filePath || !mangoId) return res.status(400).json(fail(400, '缺少 filePath 或 mangoId'));
+    // 支持完整URL或 HHMMSS/videoId
+    const urlMatch = mangoId.match(/\/bullet\/tx\/\d{4}\/\d{2}\/\d{2}\/(\d{6})\/(\d{7,8})\//);
+    const normalizedId = urlMatch ? urlMatch[1] + '/' + urlMatch[2] : mangoId;
+    if (!/^\d{6}\/\d{7,8}$/.test(normalizedId)) return res.status(400).json(fail(400, 'mangoId 格式应为 HHMMSS/videoId 或完整 bullet URL'));
+
+    const safeDir = resolveLibraryDirectory(path.dirname(filePath));
+    const safePath = path.join(safeDir, path.basename(filePath));
+    if (!fs.existsSync(safePath)) return res.status(404).json(fail(404, '文件不存在: ' + path.basename(safePath)));
+    const dir = path.dirname(safePath);
+    const ext = path.extname(safePath);
+    const base = path.basename(safePath, ext);
+
+    // 去掉已有的 _mango_xxx_xxx 后缀避免重复
+    const cleanBase = base.replace(/_mango_\d{6}_\d{7,8}$/, '');
+
+    const [time, videoId] = normalizedId.split('/');
+    const newName = `${cleanBase}_mango_${time}_${videoId}${ext}`;
+    const newPath = path.join(dir, newName);
+
+    if (fs.existsSync(newPath)) return res.status(400).json(fail(400, '目标文件已存在: ' + newName));
+
+    fs.renameSync(safePath, newPath);
+    logger.info(`[mango-rename] ${path.basename(safePath)} → ${newName}`);
+    res.json(success({ oldName: path.basename(safePath), newName }));
   } catch (err) {
     const status = isPathValidationError(err) ? 400 : 500;
     if (status === 500) logger.error(err);

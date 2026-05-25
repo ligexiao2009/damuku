@@ -293,11 +293,23 @@ router.get('/danmaku', async (req, res) => {
       return res.json(success(result));
     }
 
-    // 芒果TV
+    // 芒果TV — 支持: videoId | HHMMSS/videoId | YYYY/MM/DD/HHMMSS/videoId
     if (source === 'mango') {
-      const parts = id.split('/');
-      const timeStr = parts[0] || '000000';
-      const videoId = parts[1] || id;
+      const parts = id.split('/').filter(Boolean);
+      let datePath, timeStr, videoId;
+      if (parts.length >= 5) {
+        datePath = `${parts[0]}/${parts[1]}/${parts[2]}`;
+        timeStr = parts[3];
+        videoId = parts[4];
+      } else if (parts.length >= 2) {
+        datePath = undefined;
+        timeStr = parts[0];
+        videoId = parts[1];
+      } else {
+        datePath = undefined;
+        timeStr = '000000';
+        videoId = parts[0] || id;
+      }
       const forceRefresh = req.query.refresh === '1';
       const cacheFile = path.join(DANMU_DIR, `mango_${timeStr}_${videoId}.json`);
 
@@ -306,9 +318,9 @@ router.get('/danmaku', async (req, res) => {
         return res.json(success({ ...cached, fromCache: true }));
       }
 
-      logger.info(`[mango] 抓取弹幕 videoId: ${videoId} time: ${timeStr}`);
+      logger.info(`[mango] 抓取弹幕 videoId: ${videoId} date: ${datePath || 'today'} time: ${timeStr}`);
       logger.timeDebug('[mango] 耗时');
-      const danmus = await fetchMangoDanmaku(videoId, undefined, timeStr);
+      const danmus = await fetchMangoDanmaku(videoId, datePath, timeStr);
       logger.timeEndDebug('[mango] 耗时');
 
       const result = { source: 'mango', id: videoId, count: danmus.length, danmus };
@@ -332,12 +344,12 @@ router.get('/danmaku', async (req, res) => {
       const roomId = req.query.roomId || '';
       const programId = req.query.programId || '';
       const lastSeq = Number(req.query.lastSeq) || 0;
-      const cursor = req.query.cursor || '';
+      const cursor = (req.query.cursor || '').replace(/ /g, '+'); // iOS URLComponents 可能把 + 解码为空格
       if (!roomId || !programId) return res.status(400).json(fail(400, '缺少 roomId 或 programId'));
       const txspCookie = req.query.txspCookie || process.env.TXSP_COOKIE || '';
       const cookieSource = req.query.txspCookie ? 'client' : (process.env.TXSP_COOKIE ? 'env' : 'none');
       const cookieHash = txspCookie ? `[${cookieSource}: ${txspCookie.slice(0,16)}...${txspCookie.slice(-8)}]` : '(无)';
-      logger.info(`[txsp] roomId=${roomId} programId=${programId} cookie=${cookieHash} lastSeq=${lastSeq}`);
+      logger.info(`[txsp] roomId=${roomId} programId=${programId} cookie=${cookieHash} lastSeq=${lastSeq} cursor=${(cursor||'').slice(0,40)}`);
       if (txspCookie) logger.debug(`[txsp] cookie 完整值 (${txspCookie.length} 字符): ${txspCookie}`);
       const { danmus, maxSeq, cursor: nextCursor, pullInterval } = await fetchTxspDanmaku(roomId, programId, lastSeq, cursor, txspCookie);
       return res.json(success({ source: 'txsp', id: `${roomId}_${programId}`, count: danmus.length, danmus, maxSeq, cursor: nextCursor, pullInterval }));
@@ -345,8 +357,8 @@ router.get('/danmaku', async (req, res) => {
 
     // 爱奇艺
     if (source === 'iqiyi') {
-      if (!id || !/^\d{16}$/.test(String(id).trim())) {
-        return res.status(400).json(fail(400, '爱奇艺源需要 16 位 tvid'));
+      if (!id || !/^\d{8,16}$/.test(String(id).trim())) {
+        return res.status(400).json(fail(400, '爱奇艺源需要 8-16 位 tvid'));
       }
       const tvid = String(id).trim();
       const forceRefresh = req.query.refresh === '1';

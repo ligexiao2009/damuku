@@ -770,7 +770,7 @@
 
         <div class="control-group control-group-tools" aria-label="播放工具">
           <div class="control-group-title">播放工具</div>
-          <button id="renamePageBtn" class="secondary-button">管理</button>
+          <button id="renamePageBtn" class="secondary-button">首页</button>
           <button id="toggleSettingsBtn" class="secondary-button" aria-expanded="false" aria-controls="settingsPopover">弹幕设置</button>
           <button id="fullScreenBtn">全屏播放</button>
         </div>
@@ -1117,7 +1117,7 @@
     function detectIqiyiTvidFromName(name) {
       if (!name) return '';
       const baseName = String(name).replace(/\.[^.]+$/, '');
-      const m = baseName.match(/(\d{16})/);
+      const m = baseName.match(/(\d{8,16})/);
       return m ? m[1] : '';
     }
 
@@ -1826,7 +1826,7 @@
       const src = sourceSelect.value;
       const isBili = src === 'bili';
       strategySelect.style.display = isBili ? '' : 'none';
-      bvidInput.placeholder = isBili ? '输入BV号、ep号' : src === 'qq' ? '输入VID' : src === 'iqiyi' ? '输入16位tvid' : '输入HHMMSS/videoId';
+      bvidInput.placeholder = isBili ? '输入BV号、ep号' : src === 'qq' ? '输入VID' : src === 'iqiyi' ? '输入tvid' : '输入HHMMSS/videoId';
       if (currentVideoName && currentVideoName !== '未选择') {
         bvidInput.value = getVideoIdForSource(currentVideoName, src);
       }
@@ -1883,7 +1883,7 @@
     });
 
     renamePageBtn.addEventListener('click', () => {
-      window.open('/rename.html', '_blank');
+      window.open('/index.html', '_blank');
     });
 
     fullScreenBtn.addEventListener('click', () => {

@@ -324,6 +324,7 @@
     });
   }
 
+
   sourceSelect.addEventListener('change', () => {
     const z = sourceSelect.value === 'zhibo8';
     const t = sourceSelect.value === 'txsp';
@@ -333,7 +334,7 @@
     document.getElementById('video-file-row').style.display = (z || t) ? 'none' : '';
     if (z) bvidInput.placeholder = '输入比赛ID';
     else if (t) bvidInput.placeholder = '输入比赛ID（不用填）';
-    else if (sourceSelect.value === 'iqiyi') bvidInput.placeholder = '输入 16 位 tvid';
+    else if (sourceSelect.value === 'iqiyi') bvidInput.placeholder = '输入 tvid';
     else bvidInput.placeholder = '输入 BV 号或 EP 号...';
     if (!z && !t) clearPollTimers();
   });
@@ -480,6 +481,20 @@
 
   (async () => {
     await loadSettings();
+    // txsp 自动加载：检查是否有书签提取的数据
+    try {
+      var saved = await api(`${SERVER}/api/txsp/saved`);
+      if (saved && saved.roomId && saved.programId) {
+        sourceSelect.value = 'txsp';
+        sourceSelect.dispatchEvent(new Event('change'));
+        txspRoomId.value = saved.roomId;
+        txspProgramId.value = saved.programId;
+        if (saved.cookie) txspCookie = saved.cookie;
+        loadDanmaku(`${saved.roomId}_${saved.programId}`);
+        console.log('[txsp] auto-loaded from bookmarklet');
+        return;
+      }
+    } catch {}
     if (sourceSelect) sourceSelect.dispatchEvent(new Event('change'));
     setStatus('就绪 — 输入比赛ID，点击加载弹幕（设置已同步）');
   })();

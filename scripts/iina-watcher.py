@@ -22,7 +22,17 @@ def mpv_command(*args):
             if b"\n" in chunk: break
         sock.close()
         return json.loads(resp.decode().strip())
-    except Exception:
+    except FileNotFoundError:
+        return None
+    except ConnectionRefusedError:
+        return None
+    except Exception as e:
+        # 连接失败（僵尸 socket）就删掉，让主循环能检测到 IINA 已退出
+        if isinstance(e, OSError):
+            try:
+                os.unlink(SOCKET_PATH)
+            except Exception:
+                pass
         return None
 
 
@@ -59,8 +69,9 @@ def main():
     last_paused = None
     last_path_sync = 0
     fail_count = 0
-    MAX_FAIL = 5  # 连续失败超过此次数视为 socket 已死
+    MAX_FAIL = 15  # 连续失败超过此次数视为 socket 已死（约45秒）
 
+    socket_just_appeared = False
     while True:
         if not os.path.exists(SOCKET_PATH):
             if last_path:
@@ -68,7 +79,14 @@ def main():
                 last_path = ""
                 last_pos = 0
                 fail_count = 0
+            socket_just_appeared = False
             time.sleep(POLL)
+            continue
+
+        # socket 刚出现，等 IINA 初始化完成
+        if not last_path and not socket_just_appeared:
+            socket_just_appeared = True
+            time.sleep(2)
             continue
 
         path = get_property("path")

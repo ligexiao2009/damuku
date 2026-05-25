@@ -10,8 +10,14 @@ PORT=5001
 PID=$(lsof -ti :$PORT)
 if [ -n "$PID" ]; then
   echo "=== 端口 $PORT 被进程 $PID 占用，正在关闭 ==="
-  kill -9 $PID 2>/dev/null
-  sleep 1
+  for p in $PID; do
+    kill -9 $p 2>/dev/null
+  done
+  # 等端口释放
+  for i in {1..10}; do
+    lsof -ti :$PORT >/dev/null 2>&1 || break
+    sleep 0.5
+  done
 fi
 
 echo "=== 启动后端服务 ==="

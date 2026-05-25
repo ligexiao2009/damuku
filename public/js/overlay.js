@@ -66,6 +66,7 @@
 
   // State
   let isRunning = false;
+  let userPaused = false;
   let simTime = 0;
   let simStartPerf = 0;
   let panelVisible = false;
@@ -91,6 +92,8 @@
       engine.configure(cfg);
       syncControlsFromEngine();
       if (cfg.lastFolder) lastFolder = cfg.lastFolder;
+      if (cfg.txspRoomId) txspRoomId.value = cfg.txspRoomId;
+      if (cfg.txspProgramId) txspProgramId.value = cfg.txspProgramId;
       // 恢复红点位置
       if (cfg.indicatorLeft && cfg.indicatorTop) {
         statusIndicator.style.right = 'auto';
@@ -107,6 +110,8 @@
     try {
       const cfg = engine.getConfig();
       cfg.lastFolder = lastFolder;
+      cfg.txspRoomId = txspRoomId.value.trim();
+      cfg.txspProgramId = txspProgramId.value.trim();
       // 保存红点位置
       var left = statusIndicator.style.left;
       var top = statusIndicator.style.top;
@@ -219,7 +224,7 @@
               if (d.rawTime) d.ctime = new Date(d.rawTime).getTime() / 1000;
             }
             engine.append(data.danmus);
-            if (!isRunning) startSimulation();
+            if (!isRunning && !userPaused) startSimulation();
             if (data.maxId) zhibo8LastMaxId = data.maxId;
             setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${id}`);
           }
@@ -245,6 +250,7 @@
       currentBvid = `${roomId}_${programId}`;
       txspLastSeq = 0;
       txspCursor = '';
+      saveConfig();
 
       const poll = async () => {
         try {
@@ -258,7 +264,7 @@
             const now = getSimulatedTime();
             for (const d of data.danmus) d.time = now;
             engine.append(data.danmus);
-            if (!isRunning) startSimulation();
+            if (!isRunning && !userPaused) startSimulation();
             if (data.maxSeq) txspLastSeq = data.maxSeq;
             if (data.cursor) txspCursor = data.cursor;
             setStatus(`已加载 ${engine.danmus.length} 条弹幕 · ${roomId}`);
@@ -316,6 +322,7 @@
   function startSimulation() {
     if (isRunning) return;
     isRunning = true;
+    userPaused = false;
     simStartPerf = performance.now();
     // Only auto-set if user hasn't already jumped somewhere
     if (simTime === 0 && engine.danmus.length > 0) {
@@ -330,6 +337,7 @@
   function pauseSimulation() {
     if (!isRunning) return;
     isRunning = false;
+    userPaused = true;
     simTime = getSimulatedTime();
     engine.pause();
     saveCurrentTime();
@@ -423,7 +431,7 @@
 
   function resetHideTimer() {
     clearHideTimer();
-    hideTimer = setTimeout(hidePanel, 20000);
+    hideTimer = setTimeout(hidePanel, 10000);
   }
 
   function clearHideTimer() {
@@ -515,12 +523,26 @@
     if (src === 'bili') bvidInput.placeholder = '输入 BV 号或 EP 号';
     else if (src === 'qq') bvidInput.placeholder = '输入 VID';
     else if (src === 'mango') bvidInput.placeholder = '输入 HHMMSS/videoId';
-    else if (src === 'iqiyi') bvidInput.placeholder = '输入 16 位 tvid';
+    else if (src === 'iqiyi') bvidInput.placeholder = '输入 tvid';
     else if (isZhibo8) bvidInput.placeholder = '输入比赛ID';
     else bvidInput.placeholder = '输入比赛ID（不用填）';
     const name = videoFileSelect.value || bvidInput.value;
     if (name) {
       bvidInput.value = getVideoIdForSource(name, src);
+    }
+    // txsp 自动加载保存的数据
+    if (isTxsp) {
+      (async () => {
+        try {
+          var saved = await api(`${SERVER}/api/txsp/saved`);
+          if (saved && saved.roomId && saved.programId) {
+            txspRoomId.value = saved.roomId;
+            txspProgramId.value = saved.programId;
+            if (saved.cookie) txspCookie = saved.cookie;
+            loadDanmaku(`${saved.roomId}_${saved.programId}`);
+          }
+        } catch {}
+      })();
     }
   });
 
@@ -835,7 +857,7 @@
   function detectIqiyiTvid(name) {
     if (!name) return '';
     const base = String(name).replace(/\.[^.]+$/, '');
-    const m = base.match(/(\d{16})/);
+    const m = base.match(/(\d{8,16})/);
     return m ? m[1] : '';
   }
 
@@ -1061,20 +1083,33 @@
   (async () => {
     await loadConfig();
     await loadFolders();
+    // txsp 自动加载：检查书签提取的数据
+    try {
+      var saved = await api(`${SERVER}/api/txsp/saved`);
+      if (saved && saved.roomId && saved.programId) {
+        sourceSelect.value = 'txsp';
+        sourceSelect.dispatchEvent(new Event('change'));
+        txspRoomId.value = saved.roomId;
+        txspProgramId.value = saved.programId;
+        if (saved.cookie) txspCookie = saved.cookie;
+        loadDanmaku(`${saved.roomId}_${saved.programId}`);
+        console.log('[txsp] auto-loaded from bookmarklet');
+        return;
+      }
+    } catch {}
+    setStatus('就绪 — 按 Space 开始/暂停, O 打开控制面板, ← → 微调时间');
   })();
-
-  setStatus('就绪 — 按 Space 开始/暂停, O 打开控制面板, ← → 微调时间');
 
   // Auto-show panel on first launch so user knows overlay is running
   if (window.electronAPI) {
     showPanel();
     fadeIndicator();
-    setTimeout(hidePanel, 20000);
+    setTimeout(hidePanel, 10000);
   } else {
     // In browser mode, show panel by default too
     showPanel();
     fadeIndicator();
-    setTimeout(hidePanel, 20000);
+    setTimeout(hidePanel, 10000);
   }
 
   // 面板打开时红点变淡，隐藏时红点亮起（方便找到它）
