@@ -12,8 +12,6 @@ const logger = require('../utils/logger');
 
 const router = require('express').Router();
 
-// 缓存过期时间：7 天
-const CACHE_TTL = 7 * 86400000;
 
 function getCachePath(key) {
   return path.join(META_DIR, `${key}.json`);
@@ -24,7 +22,6 @@ function readCache(key) {
     const p = getCachePath(key);
     if (!fs.existsSync(p)) return null;
     const cached = JSON.parse(fs.readFileSync(p, 'utf-8'));
-    if (cached._ts && Date.now() - cached._ts > CACHE_TTL) return null;
     return cached;
   } catch {
     return null;

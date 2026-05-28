@@ -17,22 +17,60 @@ const userDataDir = app.getPath('userData');
 const envPath = isPackaged
   ? path.join(userDataDir, '.env')
   : path.join(__dirname, '..', '.env');
-if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
-  console.log('[app] Loaded env from:', envPath);
-} else if (isPackaged) {
-  // Create a template .env for first run
-  const template = `# B站弹幕外挂配置文件
-# 视频文件目录（必填）
-VIDEO_DIR=/Users/${os.userInfo().username}/video
+
+// In packaged mode, try to migrate from existing .env files on first run
+if (isPackaged) {
+  if (!fs.existsSync(envPath)) {
+    fs.mkdirSync(userDataDir, { recursive: true });
+    const candidatePaths = [
+      path.join(app.getPath('home'), '.danmu.env'),
+      path.join(app.getPath('home'), 'video', '.env'),
+      path.join(path.dirname(app.getPath('exe')), '.env'),
+    ];
+    let migrated = false;
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        try {
+          fs.copyFileSync(p, envPath);
+          console.log('[app] Migrated .env from:', p);
+          migrated = true;
+          break;
+        } catch (e) {
+          console.log('[app] Failed to migrate from:', p, e.message);
+        }
+      }
+    }
+    if (!migrated) {
+      const template = `# B站弹幕外挂配置文件
+# 视频文件目录（必填，多个路径用逗号分隔）
+FOLDERS_BASE=/Users/${os.userInfo().username}/video
 # 服务端口
 PORT=5001
 # B站 SESSDATA（可选，登录后抓取，用于获取高清弹幕）
 # BILI_SESSDATA=your_sessdata_here
 `;
-  fs.writeFileSync(envPath, template, 'utf-8');
-  console.log('[app] Created template .env at:', envPath);
+      fs.writeFileSync(envPath, template, 'utf-8');
+      console.log('[app] Created template .env at:', envPath);
+    }
+  }
+}
+
+if (fs.existsSync(envPath)) {
   require('dotenv').config({ path: envPath });
+  console.log('[app] Loaded env from:', envPath);
+}
+
+// Auto-migrate old VIDEO_DIR to FOLDERS_BASE if needed
+if (isPackaged && process.env.VIDEO_DIR && !process.env.FOLDERS_BASE) {
+  process.env.FOLDERS_BASE = process.env.VIDEO_DIR;
+  console.log('[app] Auto-migrated VIDEO_DIR → FOLDERS_BASE:', process.env.FOLDERS_BASE);
+}
+
+console.log('[app] FOLDERS_BASE =', process.env.FOLDERS_BASE || '(not set)');
+
+if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+  console.log('[app] Loaded env from:', envPath);
 }
 
 // Override cache/playback directories to writable location
